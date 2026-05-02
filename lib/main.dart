@@ -1,19 +1,21 @@
+import 'package:test_hh/screens/home.dart';
 import 'package:flutter/material.dart';
 
 void main() {
-  runApp(
-    GymApp()
-  );
+  runApp(const GymApp());
 }
 
 class GymApp extends StatelessWidget {
-  const GymApp({ super.key });
+  const GymApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: Text("Hi"),
+      theme: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: Colors.black,
+      ),
+      home: HomeScreen(),
     );
   }
 }
