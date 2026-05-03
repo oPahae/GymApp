@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/screens/home.dart';
 import 'package:test_hh/screens/foods.dart';
-
+import 'package:test_hh/screens/bodyParts.dart';
 class NavBar extends StatefulWidget {
   const NavBar({ super.key });
 
@@ -20,7 +20,7 @@ class _NavBarState extends State<NavBar> {
     final items = [
       _NavItem(icon: Icons.home, label: 'Home', href: HomeScreen()),
       _NavItem(icon: Icons.restaurant_menu, label: 'Foods', href: FoodsScreen()),
-      _NavItem(icon: Icons.fitness_center, label: 'Exercises', href: FoodsScreen()),
+      _NavItem(icon: Icons.fitness_center, label: 'Exercises', href: BodyPartsScreen()),
       _NavItem(icon: Icons.bar_chart, label: 'Stats', href: FoodsScreen()),
     ];
 

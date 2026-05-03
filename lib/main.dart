@@ -26,4 +26,4 @@ class GymApp extends StatelessWidget {
       home: ChatScreen(),
     );
   }
-} 
+}
