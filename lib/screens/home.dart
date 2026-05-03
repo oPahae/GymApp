@@ -2,12 +2,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:test_hh/components/header.dart';
 import 'package:test_hh/components/navbar.dart';
-
-const kNeonGreen = Color(0xFFA3FF12);
-const kDarkCard = Color(0xFF111111);
-const kDarkBg = Color(0xFF0A0A0A);
-const kGrayText = Color(0xFF888888);
-const kLightGray = Color(0xFFCCCCCC);
+import 'package:test_hh/screens/addFood.dart';
+import 'package:test_hh/constants/colors.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -313,28 +309,28 @@ class _HomeScreenState extends State<HomeScreen> {
                   letterSpacing: 1.5,
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: kNeonGreen, width: 1.5),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.add, color: kNeonGreen, size: 14),
-                    SizedBox(width: 4),
-                    Text(
-                      'ADD FOOD',
-                      style: TextStyle(
-                        color: kNeonGreen,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              // Container(
+              //   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              //   decoration: BoxDecoration(
+              //     borderRadius: BorderRadius.circular(20),
+              //     border: Border.all(color: kNeonGreen, width: 1.5),
+              //   ),
+              //   child: const Row(
+              //     children: [
+              //       Icon(Icons.add, color: kNeonGreen, size: 14),
+              //       SizedBox(width: 4),
+              //       Text(
+              //         'ADD FOOD',
+              //         style: TextStyle(
+              //           color: kNeonGreen,
+              //           fontSize: 11,
+              //           fontWeight: FontWeight.w700,
+              //           letterSpacing: 0.8,
+              //         ),
+              //       ),
+              //     ],
+              //   ),
+              // ),
             ],
           ),
           const SizedBox(height: 16),
@@ -516,7 +512,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const Divider(height: 1, color: Colors.white10),
-          ...items.map((item) => _buildFoodItem(item)),
+          ...items.map((item) => _buildFoodModel(item)),
           Padding(
             padding: const EdgeInsets.all(14),
             child: _buildAddFoodButton(),
@@ -526,7 +522,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildFoodItem(_MealItem item) {
+  Widget _buildFoodModel(_MealItem item) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       child: Row(
@@ -589,7 +585,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildAddFoodButton() {
     return DashedBorderButton(
-      onTap: () {},
+      onTap: () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const AddFoodScreen()));
+      },
       child: const Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
