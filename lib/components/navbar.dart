@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:test_hh/constants/colors.dart';
+import 'package:test_hh/screens/home.dart';
+import 'package:test_hh/screens/foods.dart';
 
 class NavBar extends StatefulWidget {
   const NavBar({ super.key });
@@ -14,10 +16,10 @@ class _NavBarState extends State<NavBar> {
   @override
   Widget build(BuildContext context) {
     final items = [
-      _NavItem(icon: Icons.restaurant_menu, label: 'Foods'),
-      _NavItem(icon: Icons.fitness_center, label: 'Exercises'),
-      _NavItem(icon: Icons.bar_chart, label: 'Stats'),
-      _NavItem(icon: Icons.calendar_today, label: 'Program'),
+      _NavItem(icon: Icons.home, label: 'Home', href: HomeScreen()),
+      _NavItem(icon: Icons.restaurant_menu, label: 'Foods', href: FoodsScreen()),
+      _NavItem(icon: Icons.fitness_center, label: 'Exercises', href: FoodsScreen()),
+      _NavItem(icon: Icons.bar_chart, label: 'Stats', href: FoodsScreen()),
     ];
 
     return Container(
@@ -46,7 +48,10 @@ class _NavBarState extends State<NavBar> {
           final item = entry.value;
           final isActive = _selectedIndex == index;
           return GestureDetector(
-            onTap: () => setState(() => _selectedIndex = index),
+            onTap: () => {
+              setState(() => _selectedIndex = index),
+              Navigator.push(context, MaterialPageRoute(builder: (_) => item.href))
+            },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -80,5 +85,6 @@ class _NavBarState extends State<NavBar> {
 class _NavItem {
   final IconData icon;
   final String label;
-  const _NavItem({required this.icon, required this.label});
+  final Widget href;
+  const _NavItem({ required this.icon, required this.label, required this.href });
 }
