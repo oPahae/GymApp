@@ -3,6 +3,7 @@ import 'package:test_hh/screens/addFood.dart';
 import 'package:test_hh/screens/foods.dart';
 import 'package:test_hh/screens/clients.dart';
 import 'package:flutter/material.dart';
+import 'package:test_hh/screens/welcome.dart';
 
 void main() {
   runApp(const GymApp());
@@ -18,7 +19,7 @@ class GymApp extends StatelessWidget {
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: Colors.black,
       ),
-      home: HomeScreen(),
+      home: SplashScreen(),
     );
   }
 } 
