@@ -47,7 +47,7 @@ class _NavBarState extends State<NavBar> {
             goal: 'Perte de poids',
             weightGoal: 70,
             createdAt: DateTime(2024, 1, 1),
-            coachId: 1,
+            coachId: 1, gender: '',
           ),
         ),
       ),
