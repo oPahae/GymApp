@@ -12,14 +12,209 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
+class _ActivityItem {
+  String name;
+  int calories;
+
+  _ActivityItem({required this.name, required this.calories});
+}
+
 class _HomeScreenState extends State<HomeScreen> {
+  static const int _baseBurned = 2200;
+
+  // Static meals calories
+  final int _breakfastKcal = 450;
+  final int _lunchKcal = 600;
+  final int _dinnerKcal = 400;
+
+  // Static remaining
+  final int _remaining = 850;
+
+  final List<_ActivityItem> _activities = [];
+
+  int get _totalConsumed => _breakfastKcal + _lunchKcal + _dinnerKcal;
+
+  int get _totalActivityCalories =>
+      _activities.fold(0, (sum, a) => sum + a.calories);
+
+  int get _totalBurned => _baseBurned + _totalActivityCalories;
+
+  double get _consumedProgress => (_totalConsumed / 2300).clamp(0.0, 1.0);
+
+  double get _burnedProgress => (_totalBurned / 3000).clamp(0.0, 1.0);
+
+  double get _calorieRingProgress => (_totalConsumed / 2300).clamp(0.0, 1.0);
+
+  void _showAddActivityDialog() {
+    final nameController = TextEditingController();
+    final caloriesController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(ctx).viewInsets.bottom,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1A1A),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: kNeonGreen.withOpacity(0.2), width: 1),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: kNeonGreen.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.directions_run, color: kNeonGreen, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Add Activity',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              _buildInputField(
+                controller: nameController,
+                label: 'Activity name',
+                hint: 'e.g. Running, Cycling...',
+                keyboardType: TextInputType.text,
+              ),
+              const SizedBox(height: 14),
+              _buildInputField(
+                controller: caloriesController,
+                label: 'Calories burned',
+                hint: 'e.g. 300',
+                keyboardType: TextInputType.number,
+                suffix: 'kcal',
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: GestureDetector(
+                  onTap: () {
+                    final name = nameController.text.trim();
+                    final cal = int.tryParse(caloriesController.text.trim());
+                    if (name.isNotEmpty && cal != null && cal > 0) {
+                      setState(() {
+                        _activities.add(_ActivityItem(name: name, calories: cal));
+                      });
+                      Navigator.pop(ctx);
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      color: kNeonGreen,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Text(
+                      'Add Activity',
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInputField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required TextInputType keyboardType,
+    String? suffix,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.6),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.06),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withOpacity(0.12), width: 1),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  keyboardType: keyboardType,
+                  style: const TextStyle(color: Colors.white, fontSize: 15),
+                  decoration: InputDecoration(
+                    hintText: hint,
+                    hintStyle: TextStyle(
+                      color: Colors.white.withOpacity(0.3),
+                      fontSize: 14,
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                  ),
+                ),
+              ),
+              if (suffix != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 14),
+                  child: Text(
+                    suffix,
+                    style: TextStyle(
+                      color: kNeonGreen.withOpacity(0.7),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-
       appBar: const Header(),
-
       body: Stack(
         children: [
           SingleChildScrollView(
@@ -34,12 +229,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 22),
                 _buildMealsSection(),
                 const SizedBox(height: 20),
+                _buildActivitiesSection(),
+                const SizedBox(height: 20),
               ],
             ),
           ),
         ],
       ),
-
       bottomNavigationBar: NavBar(),
     );
   }
@@ -100,6 +296,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildCircularProgress() {
+    final int consumed = _totalConsumed;
+    final String progressLabel =
+        '${(_calorieRingProgress * 100).toStringAsFixed(0)}%';
+
     return Column(
       children: [
         SizedBox(
@@ -110,16 +310,16 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               CustomPaint(
                 size: const Size(150, 150),
-                painter: _CircularProgressPainter(progress: 0.62),
+                painter: _CircularProgressPainter(progress: _calorieRingProgress),
               ),
               Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Icon(Icons.local_fire_department, color: kNeonGreen, size: 22),
                   const SizedBox(height: 2),
-                  const Text(
-                    '1,450',
-                    style: TextStyle(
+                  Text(
+                    _formatKcal(consumed),
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 26,
                       fontWeight: FontWeight.w800,
@@ -147,9 +347,9 @@ class _HomeScreenState extends State<HomeScreen> {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: kNeonGreen.withOpacity(0.4), width: 1),
           ),
-          child: const Text(
-            '62%',
-            style: TextStyle(
+          child: Text(
+            progressLabel,
+            style: const TextStyle(
               color: kNeonGreen,
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -167,25 +367,33 @@ class _HomeScreenState extends State<HomeScreen> {
         _buildStatItem(
           icon: Icons.local_fire_department,
           label: 'BURNED',
-          value: '830 kcal',
-          progress: 0.36,
+          value: '${_formatKcal(_totalBurned)} kcal',
+          progress: _burnedProgress,
+          subtitle: '+${_formatKcal(_totalActivityCalories)} activity · 2,200 base',
         ),
         const SizedBox(height: 16),
         _buildStatItem(
           icon: Icons.restaurant,
           label: 'CONSUMED',
-          value: '1,450 kcal',
-          progress: 0.63,
+          value: '${_formatKcal(_totalConsumed)} kcal',
+          progress: _consumedProgress,
         ),
         const SizedBox(height: 16),
         _buildStatItem(
           icon: Icons.balance,
           label: 'REMAINING',
-          value: '850 kcal',
-          progress: 0.37,
+          value: '${_formatKcal(_remaining)} kcal',
+          progress: (_remaining / 2300).clamp(0.0, 1.0),
         ),
       ],
     );
+  }
+
+  String _formatKcal(int value) {
+    if (value >= 1000) {
+      return '${(value ~/ 1000)},${(value % 1000).toString().padLeft(3, '0')}';
+    }
+    return value.toString();
   }
 
   Widget _buildStatItem({
@@ -193,6 +401,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required String label,
     required String value,
     required double progress,
+    String? subtitle,
   }) {
     return Row(
       children: [
@@ -228,6 +437,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   fontWeight: FontWeight.w700,
                 ),
               ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: kNeonGreen.withOpacity(0.7),
+                    fontSize: 9,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
               const SizedBox(height: 5),
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
@@ -309,28 +529,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   letterSpacing: 1.5,
                 ),
               ),
-              // Container(
-              //   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-              //   decoration: BoxDecoration(
-              //     borderRadius: BorderRadius.circular(20),
-              //     border: Border.all(color: kNeonGreen, width: 1.5),
-              //   ),
-              //   child: const Row(
-              //     children: [
-              //       Icon(Icons.add, color: kNeonGreen, size: 14),
-              //       SizedBox(width: 4),
-              //       Text(
-              //         'ADD FOOD',
-              //         style: TextStyle(
-              //           color: kNeonGreen,
-              //           fontSize: 11,
-              //           fontWeight: FontWeight.w700,
-              //           letterSpacing: 0.8,
-              //         ),
-              //       ),
-              //     ],
-              //   ),
-              // ),
             ],
           ),
           const SizedBox(height: 16),
@@ -413,7 +611,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Column(
         children: [
-          // ── Image header with gradient to black ──
           ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             child: SizedBox(
@@ -421,14 +618,12 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // Real food image as background
                   Image.network(
                     headerImageUrl,
                     fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) =>
                         Container(color: const Color(0xFF1A1A1A)),
                   ),
-                  // Top-to-bottom gradient: transparent → black
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -443,7 +638,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ),
-                  // Right-to-left subtle darkening
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -456,7 +650,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ),
-                  // Row with meal label + kcal pill + chevron
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     child: Row(
@@ -470,17 +663,13 @@ class _HomeScreenState extends State<HomeScreen> {
                             fontWeight: FontWeight.w700,
                             letterSpacing: 1,
                             shadows: [
-                              Shadow(
-                                color: Colors.black87,
-                                blurRadius: 8,
-                              ),
+                              Shadow(color: Colors.black87, blurRadius: 8),
                             ],
                           ),
                         ),
                         const Spacer(),
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
                             color: Colors.black.withOpacity(0.45),
                             borderRadius: BorderRadius.circular(20),
@@ -605,7 +794,270 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  // ── ACTIVITIES SECTION ──────────────────────────────────────────────────────
+
+  Widget _buildActivitiesSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "TODAY'S ACTIVITIES",
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.5,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            decoration: BoxDecoration(
+              color: kDarkCard,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.4),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                // Header row
+                _buildActivityHeader(),
+                const Divider(height: 1, color: Colors.white10),
+                // Base metabolic info
+                _buildBaseBurnedRow(),
+                if (_activities.isNotEmpty) ...[
+                  const Divider(height: 1, color: Colors.white10),
+                  ..._activities.asMap().entries.map(
+                    (entry) => _buildActivityRow(entry.key, entry.value),
+                  ),
+                ],
+                const Divider(height: 1, color: Colors.white10),
+                Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: _buildAddActivityButton(),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActivityHeader() {
+    return Container(
+      height: 64,
+      decoration: BoxDecoration(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            const Color(0xFF1A1A1A),
+            kNeonGreen.withOpacity(0.08),
+          ],
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: kNeonGreen.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.directions_run, color: kNeonGreen, size: 20),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'ACTIVITY',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1,
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.45),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: kNeonGreen.withOpacity(0.55),
+                  width: 1,
+                ),
+              ),
+              child: Text(
+                '${_formatKcal(_totalBurned)} kcal',
+                style: const TextStyle(
+                  color: kNeonGreen,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBaseBurnedRow() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: kNeonGreen.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: kNeonGreen.withOpacity(0.2), width: 1),
+            ),
+            child: const Icon(Icons.favorite, color: kNeonGreen, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Base Metabolic Rate',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Always included in burned',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.45),
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '2,200 kcal',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActivityRow(int index, _ActivityItem activity) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.fitness_center, color: Colors.white54, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  activity.name,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Manual entry',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.45),
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '${activity.calories} kcal',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _activities.removeAt(index);
+              });
+            },
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.close, color: Colors.redAccent, size: 14),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAddActivityButton() {
+    return DashedBorderButton(
+      onTap: _showAddActivityDialog,
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.add_circle_outline, color: kNeonGreen, size: 16),
+          SizedBox(width: 6),
+          Text(
+            'Add Activity',
+            style: TextStyle(
+              color: kNeonGreen,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
+
+// ── DATA MODELS ──────────────────────────────────────────────────────────────
 
 class _MealItem {
   final String imageUrl;
@@ -620,6 +1072,8 @@ class _MealItem {
     required this.calories,
   });
 }
+
+// ── PAINTERS ─────────────────────────────────────────────────────────────────
 
 class _CircularProgressPainter extends CustomPainter {
   final double progress;
@@ -675,6 +1129,8 @@ class _CircularProgressPainter extends CustomPainter {
   bool shouldRepaint(covariant _CircularProgressPainter oldDelegate) =>
       oldDelegate.progress != progress;
 }
+
+// ── DASHED BORDER BUTTON ──────────────────────────────────────────────────────
 
 class DashedBorderButton extends StatelessWidget {
   final VoidCallback onTap;
