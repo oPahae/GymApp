@@ -6,14 +6,14 @@ import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/models/client.dart';
 import 'package:test_hh/models/coach.dart';
 
-class ProfilClient extends StatefulWidget {
-  const ProfilClient({super.key});
+class ProfileClient extends StatefulWidget {
+  const ProfileClient({super.key});
 
   @override
-  State<ProfilClient> createState() => _ProfilClientState();
+  State<ProfileClient> createState() => _ProfileClientState();
 }
 
-class _ProfilClientState extends State<ProfilClient> {
+class _ProfileClientState extends State<ProfileClient> {
   // ── Hardcoded client data ─────────────────────────────────────────────────
   final Client _client = Client(
     id: 1,
@@ -34,7 +34,7 @@ class _ProfilClientState extends State<ProfilClient> {
       createdAt: DateTime(2021, 3, 15),
       clients: [], image: '',
     ), createdAt: DateTime(2021, 3, 15),
-    coachId: 1,
+    coachID: 1,
   );
 
   // ── State ─────────────────────────────────────────────────────────────────

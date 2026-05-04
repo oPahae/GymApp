@@ -6,14 +6,14 @@ import 'package:test_hh/models/client.dart';
 import 'package:test_hh/models/coach.dart';
 import 'package:test_hh/screens/profileClient.dart';
 
-class ProfilCoach extends StatefulWidget {
-  const ProfilCoach({super.key});
+class ProfileCoach extends StatefulWidget {
+  const ProfileCoach({super.key});
 
   @override
-  State<ProfilCoach> createState() => _ProfilCoachState();
+  State<ProfileCoach> createState() => _ProfileCoachState();
 }
 
-class _ProfilCoachState extends State<ProfilCoach> {
+class _ProfileCoachState extends State<ProfileCoach> {
   // ── Hardcoded coach data ──────────────────────────────────────────────────
   final Coach _coach = Coach(
     id: 1,
@@ -33,7 +33,7 @@ class _ProfilCoachState extends State<ProfilCoach> {
         goal: 'Lose Weight',
         frequency: 2,
         gender: 'Female',
-        coach: null, createdAt:  DateTime(2023, 7, 20), coachId: 1,
+        coach: null, createdAt:  DateTime(2023, 7, 20), coachID: 1,
       ),
       Client(
         id: 2,
@@ -46,7 +46,7 @@ class _ProfilCoachState extends State<ProfilCoach> {
         goal: 'Build Muscle',
         frequency: 4,
         gender: 'Male',
-        coach: null, createdAt:  DateTime(2023, 7, 20), coachId: 1,
+        coach: null, createdAt:  DateTime(2023, 7, 20), coachID: 1,
       ),
       Client(
         id: 3,
@@ -59,7 +59,7 @@ class _ProfilCoachState extends State<ProfilCoach> {
         goal: 'Stay Healthy',
         frequency: 1,
         gender: 'Female',
-        coach: null, createdAt:  DateTime(2023, 7, 20), coachId: 1,
+        coach: null, createdAt:  DateTime(2023, 7, 20), coachID: 1,
       ),
     ], image: '',
   );
@@ -137,7 +137,7 @@ class _ProfilCoachState extends State<ProfilCoach> {
   void _openClientProfile(Client client) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const ProfilClient()),
+      MaterialPageRoute(builder: (_) => const ProfileClient()),
     );
   }
 
