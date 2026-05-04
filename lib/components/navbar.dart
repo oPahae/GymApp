@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:test_hh/constants/colors.dart';
+import 'package:test_hh/models/client.dart';
 import 'package:test_hh/screens/home.dart';
 import 'package:test_hh/screens/foods.dart';
 import 'package:test_hh/screens/bodyParts.dart';
+import 'package:test_hh/screens/stats.dart';
+
 class NavBar extends StatefulWidget {
-  const NavBar({ super.key });
+  const NavBar({super.key});
 
   @override
   State<NavBar> createState() => _NavBarState();
@@ -19,9 +22,35 @@ class _NavBarState extends State<NavBar> {
   Widget build(BuildContext context) {
     final items = [
       _NavItem(icon: Icons.home, label: 'Home', href: HomeScreen()),
-      _NavItem(icon: Icons.restaurant_menu, label: 'Foods', href: FoodsScreen()),
-      _NavItem(icon: Icons.fitness_center, label: 'Exercises', href: BodyPartsScreen()),
-      _NavItem(icon: Icons.bar_chart, label: 'Stats', href: FoodsScreen()),
+      _NavItem(
+        icon: Icons.restaurant_menu,
+        label: 'Foods',
+        href: FoodsScreen(),
+      ),
+      _NavItem(
+        icon: Icons.fitness_center,
+        label: 'Exercises',
+        href: BodyPartsScreen(),
+      ),
+      _NavItem(
+        icon: Icons.bar_chart,
+        label: 'Stats',
+        href: StatScreen(
+          client: Client(
+            id: 1,
+            name: 'Test User',
+            image: 'https://i.pravatar.cc/150?img=1',
+            birth: DateTime(1995, 6, 15),
+            weight: 80,
+            height: 175,
+            frequency: 4,
+            goal: 'Perte de poids',
+            weightGoal: 70,
+            createdAt: DateTime(2024, 1, 1),
+            coachId: 1,
+          ),
+        ),
+      ),
     ];
 
     return Container(
@@ -52,19 +81,28 @@ class _NavBarState extends State<NavBar> {
           return GestureDetector(
             onTap: () => {
               setState(() => _selectedIndex = index),
-              Navigator.push(context, MaterialPageRoute(builder: (_) => item.href))
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => item.href),
+              ),
             },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: isActive ? kNeonGreen.withOpacity(0.12) : Colors.transparent,
+                color: isActive
+                    ? kNeonGreen.withOpacity(0.12)
+                    : Colors.transparent,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(item.icon, color: isActive ? kNeonGreen : kGrayText, size: 22),
+                  Icon(
+                    item.icon,
+                    color: isActive ? kNeonGreen : kGrayText,
+                    size: 22,
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     item.label,
@@ -88,5 +126,5 @@ class _NavItem {
   final IconData icon;
   final String label;
   final Widget href;
-  const _NavItem({ required this.icon, required this.label, required this.href });
+  const _NavItem({required this.icon, required this.label, required this.href});
 }
