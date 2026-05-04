@@ -176,14 +176,14 @@ final List<DayProgram> fakeProgramWeek = [
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-class ProgramPage extends StatefulWidget {
-  const ProgramPage({super.key});
+class ProgramScreen extends StatefulWidget {
+  const ProgramScreen({super.key});
 
   @override
-  State<ProgramPage> createState() => _ProgramPageState();
+  State<ProgramScreen> createState() => _ProgramScreenState();
 }
 
-class _ProgramPageState extends State<ProgramPage> {
+class _ProgramScreenState extends State<ProgramScreen> {
 
   // TODO: remplacer par les vraies données depuis l'API
   final List<DayProgram> _week = fakeProgramWeek;

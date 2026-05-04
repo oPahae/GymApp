@@ -11,7 +11,7 @@ class Client {
   final String goal;
   final double weightGoal;
   final DateTime createdAt;
-  final int coachId;
+  final int coachID;
   final String gender;
   final Coach? coach; 
 
@@ -26,7 +26,7 @@ class Client {
     required this.goal,
     required this.weightGoal,
     required this.createdAt,
-    required this.coachId,
+    required this.coachID,
     required this.gender,
     this.coach, // Initialisation optionnelle
   });
@@ -42,10 +42,12 @@ class Client {
         goal: json['goal'],
         weightGoal: (json['weightGoal'] as num).toDouble(),
         createdAt: DateTime.parse(json['createdAt']),
-        coachId: json['coachID'],
+        coachID: json['coachID'],
         gender: json['gender'] ?? 'Male',
         coach: json['coach'] != null ? Coach.fromJson(json['coach']) : null, // Parsing du coach
       );
+
+  get age => null;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -58,7 +60,7 @@ class Client {
         'goal': goal,
         'weightGoal': weightGoal,
         'createdAt': createdAt.toIso8601String(),
-        'coachID': coachId,
+        'coachID': coachID,
         'gender': gender,
         'coach': coach?.toJson(), // Sérialisation du coach
       };
@@ -89,7 +91,7 @@ class Client {
         goal: goal ?? this.goal,
         weightGoal: weightGoal ?? this.weightGoal,
         createdAt: createdAt ?? this.createdAt,
-        coachId: coachId ?? this.coachId,
+        coachID: coachID ?? this.coachID,
         gender: gender ?? this.gender,
         coach: coach ?? this.coach, // Mise à jour du coach
       );
