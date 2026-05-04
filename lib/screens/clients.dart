@@ -2,65 +2,73 @@ import 'package:flutter/material.dart';
 import 'package:test_hh/components/header.dart';
 import 'package:test_hh/components/navbar.dart';
 import 'package:test_hh/constants/colors.dart';
-import 'package:test_hh/models/client-pahae(temporaire).dart';
+import 'package:test_hh/models/client.dart';
 
 // ── Sample data ─────────────────────────────────────────────────────────────
-final List<ClientModel> _allClients = [
-  ClientModel(
-    id: '#C-001',
+final List<Client> _allClients = [
+  Client(
+    id: 1,
     name: 'Lucas Martin',
-    imageUrl: 'https://randomuser.me/api/portraits/men/32.jpg',
-    gender: Gender.male,
-    birthDate: DateTime(1995, 4, 12),
+    image: 'https://randomuser.me/api/portraits/men/32.jpg',
+    gender: "male",
+    birth: DateTime(1995, 4, 12),
+    weight: 10, height: 10, frequency: 10, goal: '', weightGoal: 10, createdAt: new DateTime.now(), coachID: 10,
   ),
-  ClientModel(
-    id: '#C-002',
+  Client(
+    id: 1,
     name: 'Emma Dupont',
-    imageUrl: 'https://randomuser.me/api/portraits/women/44.jpg',
-    gender: Gender.female,
-    birthDate: DateTime(1999, 8, 22),
+    image: 'https://randomuser.me/api/portraits/women/44.jpg',
+    gender: "female",
+    birth: DateTime(1999, 8, 22),
+    weight: 10, height: 10, frequency: 10, goal: '', weightGoal: 10, createdAt: new DateTime.now(), coachID: 10,
   ),
-  ClientModel(
-    id: '#C-003',
+  Client(
+    id: 1,
     name: 'Noah Bernard',
-    imageUrl: 'https://randomuser.me/api/portraits/men/56.jpg',
-    gender: Gender.male,
-    birthDate: DateTime(1990, 1, 5),
+    image: 'https://randomuser.me/api/portraits/men/56.jpg',
+    gender: "male",
+    birth: DateTime(1990, 1, 5),
+    weight: 10, height: 10, frequency: 10, goal: '', weightGoal: 10, createdAt: new DateTime.now(), coachID: 10,
   ),
-  ClientModel(
-    id: '#C-004',
+  Client(
+    id: 1,
     name: 'Chloé Leroy',
-    imageUrl: 'https://randomuser.me/api/portraits/women/68.jpg',
-    gender: Gender.female,
-    birthDate: DateTime(2001, 11, 30),
+    image: 'https://randomuser.me/api/portraits/women/68.jpg',
+    gender: "female",
+    birth: DateTime(2001, 11, 30),
+    weight: 10, height: 10, frequency: 10, goal: '', weightGoal: 10, createdAt: new DateTime.now(), coachID: 10,
   ),
-  ClientModel(
-    id: '#C-005',
+  Client(
+    id: 1,
     name: 'Ethan Moreau',
-    imageUrl: 'https://randomuser.me/api/portraits/men/77.jpg',
-    gender: Gender.male,
-    birthDate: DateTime(1988, 7, 17),
+    image: 'https://randomuser.me/api/portraits/men/77.jpg',
+    gender: "male",
+    birth: DateTime(1988, 7, 17),
+    weight: 10, height: 10, frequency: 10, goal: '', weightGoal: 10, createdAt: new DateTime.now(), coachID: 10,
   ),
-  ClientModel(
-    id: '#C-006',
+  Client(
+    id: 1,
     name: 'Léa Simon',
-    imageUrl: 'https://randomuser.me/api/portraits/women/12.jpg',
-    gender: Gender.female,
-    birthDate: DateTime(1997, 3, 8),
+    image: 'https://randomuser.me/api/portraits/women/12.jpg',
+    gender: "female",
+    birth: DateTime(1997, 3, 8),
+    weight: 10, height: 10, frequency: 10, goal: '', weightGoal: 10, createdAt: new DateTime.now(), coachID: 10,
   ),
-  ClientModel(
-    id: '#C-007',
+  Client(
+    id: 1,
     name: 'Hugo Laurent',
-    imageUrl: 'https://randomuser.me/api/portraits/men/90.jpg',
-    gender: Gender.male,
-    birthDate: DateTime(2000, 6, 25),
+    image: 'https://randomuser.me/api/portraits/men/90.jpg',
+    gender: "male",
+    birth: DateTime(2000, 6, 25),
+    weight: 10, height: 10, frequency: 10, goal: '', weightGoal: 10, createdAt: new DateTime.now(), coachID: 10,
   ),
-  ClientModel(
-    id: '#C-008',
+  Client(
+    id: 1,
     name: 'Camille Petit',
-    imageUrl: 'https://randomuser.me/api/portraits/women/35.jpg',
-    gender: Gender.female,
-    birthDate: DateTime(1993, 9, 14),
+    image: 'https://randomuser.me/api/portraits/women/35.jpg',
+    gender: "female",
+    birth: DateTime(1993, 9, 14),
+    weight: 10, height: 10, frequency: 10, goal: '', weightGoal: 10, createdAt: new DateTime.now(), coachID: 10,
   ),
 ];
 
@@ -75,10 +83,10 @@ class ClientsScreen extends StatefulWidget {
 class _ClientsScreenState extends State<ClientsScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
   String _query = '';
-  // null = all, Gender.male, Gender.female
-  Gender? _filterGender;
+  // null = all, "male", "female"
+  String? _filterGender;
 
-  late List<ClientModel> _clients;
+  late List<Client> _clients;
 
   @override
   void initState() {
@@ -95,17 +103,16 @@ class _ClientsScreenState extends State<ClientsScreen> {
     super.dispose();
   }
 
-  List<ClientModel> get _filtered {
+  List<Client> get _filtered {
     return _clients.where((c) {
-      final matchSearch = c.name.toLowerCase().contains(_query) ||
-          c.id.toLowerCase().contains(_query);
+      final matchSearch = c.name.toLowerCase().contains(_query);
       final matchGender =
           _filterGender == null || c.gender == _filterGender;
       return matchSearch && matchGender;
     }).toList();
   }
 
-  void _removeClient(ClientModel client) {
+  void _removeClient(Client client) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -242,10 +249,10 @@ class _ClientsScreenState extends State<ClientsScreen> {
 
   // ── Filter chips ───────────────────────────────────────────────────────────
   Widget _buildFilterChips() {
-    final filters = <String, Gender?>{
+    final filters = <String, String?>{
       'ALL': null,
-      '♂ MALE': Gender.male,
-      '♀ FEMALE': Gender.female,
+      '♂ MALE': "male",
+      '♀ FEMALE': "female",
     };
 
     return SizedBox(
@@ -305,7 +312,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
   }
 
   // ── Client card ────────────────────────────────────────────────────────────
-  Widget _buildClientCard(ClientModel client) {
+  Widget _buildClientCard(Client client) {
     return GestureDetector(
       onTap: () {
         // Navigator.push(
@@ -344,7 +351,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
     );
   }
 
-  Widget _buildAvatar(ClientModel client) {
+  Widget _buildAvatar(Client client) {
     return Stack(
       children: [
         Container(
@@ -363,12 +370,12 @@ class _ClientsScreenState extends State<ClientsScreen> {
           ),
           child: ClipOval(
             child: Image.network(
-              client.imageUrl,
+              client.image,
               fit: BoxFit.cover,
               errorBuilder: (_, __, ___) => Container(
                 color: const Color(0xFF222222),
                 child: Icon(
-                  client.gender == Gender.male
+                  client.gender == "male"
                       ? Icons.person
                       : Icons.person_outline,
                   color: Colors.white38,
@@ -386,7 +393,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
             width: 20,
             height: 20,
             decoration: BoxDecoration(
-              color: client.gender == Gender.male
+              color: client.gender == "male"
                   ? const Color(0xFF1A3A5C)
                   : const Color(0xFF5C1A3A),
               shape: BoxShape.circle,
@@ -394,10 +401,10 @@ class _ClientsScreenState extends State<ClientsScreen> {
             ),
             child: Center(
               child: Text(
-                client.gender == Gender.male ? '♂' : '♀',
+                client.gender == "male" ? '♂' : '♀',
                 style: TextStyle(
                   fontSize: 10,
-                  color: client.gender == Gender.male
+                  color: client.gender == "male"
                       ? const Color(0xFF5BB8FF)
                       : const Color(0xFFFF8FC8),
                   fontWeight: FontWeight.w700,
@@ -410,7 +417,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
     );
   }
 
-  Widget _buildInfo(ClientModel client) {
+  Widget _buildInfo(Client client) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -424,7 +431,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
         ),
         const SizedBox(height: 4),
         Text(
-          client.id,
+          "${client.id}",
           style: TextStyle(
             color: kNeonGreen.withOpacity(0.8),
             fontSize: 11,
@@ -441,10 +448,10 @@ class _ClientsScreenState extends State<ClientsScreen> {
             ),
             const SizedBox(width: 8),
             _buildBadge(
-              icon: client.gender == Gender.male
+              icon: client.gender == "male"
                   ? Icons.male_outlined
                   : Icons.female_outlined,
-              label: client.gender == Gender.male ? 'Male' : 'Female',
+              label: client.gender == "male" ? 'Male' : 'Female',
             ),
           ],
         ),
@@ -477,7 +484,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
     );
   }
 
-  Widget _buildRemoveButton(ClientModel client) {
+  Widget _buildRemoveButton(Client client) {
     return GestureDetector(
       onTap: () => _removeClient(client),
       child: Container(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:test_hh/models/client.dart';
 import 'package:test_hh/models/coach.dart';
+import 'package:test_hh/screens/clients.dart';
 import 'package:test_hh/screens/profile.dart';
 
 void main() {
@@ -31,7 +32,7 @@ class GymApp extends StatelessWidget {
         goal: 'Lose Weight',
         weightGoal: 72.0,
         createdAt: DateTime(2023, 5, 10),
-        coachId: 1,
+        coachID: 1,
         gender: 'Male',
         coach: null,
       ),
@@ -47,7 +48,7 @@ class GymApp extends StatelessWidget {
         goal: 'Build Muscle',
         weightGoal: 70.0,
         createdAt: DateTime(2023, 6, 15),
-        coachId: 1,
+        coachID: 1,
         gender: 'Female',
         coach: null,
       ),
@@ -63,7 +64,7 @@ class GymApp extends StatelessWidget {
         goal: 'Boost Endurance',
         weightGoal: 85.0,
         createdAt: DateTime(2023, 7, 20),
-        coachId: 1,
+        coachID: 1,
         gender: 'Male',
         coach: null,
       ),
@@ -82,7 +83,7 @@ class GymApp extends StatelessWidget {
     goal: 'Lose Weight',
     weightGoal: 72.0,
     createdAt: DateTime(2023, 5, 10),
-    coachId: 1,
+    coachID: 1,
     gender: 'Male',
     coach: Coach(
       id: 1,
@@ -103,9 +104,9 @@ class GymApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.black,
       ),
       // Pour tester le profil d'un coach avec ses clients
-      home: ProfileScreen(
-        coach: testCoach,
-        coachClients: testCoach.clients, // Passe explicitement la liste des clients
+      home: ClientsScreen(
+        // coach: testCoach,
+        // coachClients: testCoach.clients, // Passe explicitement la liste des clients
       ),
       // Pour tester le profil d'un client avec son coach
       //home: ProfileScreen(client: testClientWithCoach),
