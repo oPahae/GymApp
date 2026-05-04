@@ -14,12 +14,12 @@ enum _Meal { breakfast, lunch, dinner }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-class CoachProgramScreen extends StatefulWidget {
+class ProgramCoachScreen extends StatefulWidget {
   final String clientName;
   final String clientId;
   final String? clientAvatarUrl;
 
-  const CoachProgramScreen({
+  const ProgramCoachScreen({
     super.key,
     required this.clientName,
     required this.clientId,
@@ -27,10 +27,10 @@ class CoachProgramScreen extends StatefulWidget {
   });
 
   @override
-  State<CoachProgramScreen> createState() => _CoachProgramScreenState();
+  State<ProgramCoachScreen> createState() => _ProgramCoachScreenState();
 }
 
-class _CoachProgramScreenState extends State<CoachProgramScreen> {
+class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
   // ── Constants ────────────────────────────────────────────────────────────
   static const _daysShort = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 
