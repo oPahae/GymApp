@@ -21,7 +21,7 @@ class GymApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.black,
       ),
       
-      home: HomeScreen(),
+      home: SplashScreen(),
     );
   }
 }
