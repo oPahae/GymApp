@@ -1,6 +1,10 @@
+// lib/screens/login.dart
 import 'package:flutter/material.dart';
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/screens/register.dart';
+import 'package:test_hh/screens/home.dart';
+import 'package:test_hh/screens/forgotPassword.dart';
+import 'package:test_hh/services/api_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -10,15 +14,63 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _usernameController = TextEditingController();
+  final _identifierController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _isLoading = false;
 
   @override
   void dispose() {
-    _usernameController.dispose();
+    _identifierController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleLogin() async {
+    final identifier = _identifierController.text.trim();
+    final password = _passwordController.text;
+
+    if (identifier.isEmpty || password.isEmpty) {
+      _showSnack('Veuillez remplir tous les champs.', isError: true);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final result = await ApiService.login(
+        identifier: identifier,
+        password: password,
+      );
+
+      if (!mounted) return;
+
+      if (result['success'] == true) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
+        );
+      } else {
+        final message = result['message'] ?? 'Identifiants incorrects.';
+        _showSnack(message, isError: true);
+      }
+    } catch (e) {
+      _showSnack('Erreur de connexion au serveur.', isError: true);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showSnack(String msg, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg, style: const TextStyle(color: Colors.white)),
+        backgroundColor: isError ? const Color(0xFFFF4444) : kNeonGreen,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
   }
 
   @override
@@ -40,11 +92,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [
-                        Color(0x330A0A0A),
-                        Color(0xA60A0A0A),
-                        kDarkBg,
-                      ],
+                      colors: [Color(0x330A0A0A), Color(0xA60A0A0A), kDarkBg],
                       stops: [0.0, 0.55, 1.0],
                     ),
                   ),
@@ -60,10 +108,9 @@ class _LoginScreenState extends State<LoginScreen> {
               width: 260, height: 260,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: RadialGradient(colors: [
-                  kNeonGreen.withOpacity(0.10),
-                  Colors.transparent,
-                ]),
+                gradient: RadialGradient(
+                  colors: [kNeonGreen.withOpacity(0.10), Colors.transparent],
+                ),
               ),
             ),
           ),
@@ -73,10 +120,9 @@ class _LoginScreenState extends State<LoginScreen> {
               width: 180, height: 180,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: RadialGradient(colors: [
-                  kNeonGreen.withOpacity(0.06),
-                  Colors.transparent,
-                ]),
+                gradient: RadialGradient(
+                  colors: [kNeonGreen.withOpacity(0.06), Colors.transparent],
+                ),
               ),
             ),
           ),
@@ -91,8 +137,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 52),
                   _buildLogo(),
                   const SizedBox(height: 150),
-
-                  // Headline directement sur le fond
                   _buildHeadline(),
                   const SizedBox(height: 4),
                   Text(
@@ -101,11 +145,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 28),
 
-                  // Inputs
                   _buildInputLabel('USERNAME OR EMAIL'),
                   const SizedBox(height: 7),
                   _buildTextField(
-                    controller: _usernameController,
+                    controller: _identifierController,
                     hint: 'Enter your username or email',
                     icon: Icons.person_outline_rounded,
                   ),
@@ -121,11 +164,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 10),
 
-                  // Forgot
+                  // Forgot password
                   Align(
                     alignment: Alignment.centerRight,
                     child: GestureDetector(
-                      onTap: () {},
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
+                      ),
                       child: const Text(
                         'Forgot password?',
                         style: TextStyle(
@@ -161,9 +207,7 @@ class _LoginScreenState extends State<LoginScreen> {
             color: kNeonGreen.withOpacity(0.12),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: kNeonGreen.withOpacity(0.35), width: 1),
-            boxShadow: [
-              BoxShadow(color: kNeonGreen.withOpacity(0.25), blurRadius: 20),
-            ],
+            boxShadow: [BoxShadow(color: kNeonGreen.withOpacity(0.25), blurRadius: 20)],
           ),
           child: const Icon(Icons.fitness_center, color: kNeonGreen, size: 24),
         ),
@@ -224,6 +268,7 @@ class _LoginScreenState extends State<LoginScreen> {
             child: TextField(
               controller: controller,
               obscureText: isPassword ? _obscurePassword : false,
+              onSubmitted: (_) => isPassword ? _handleLogin() : null,
               style: const TextStyle(
                 color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500,
               ),
@@ -250,21 +295,31 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _buildConnexionButton() {
     return ElevatedButton(
-      onPressed: () {},
+      onPressed: _isLoading ? null : _handleLogin,
       style: ElevatedButton.styleFrom(
         backgroundColor: kNeonGreen,
+        disabledBackgroundColor: kNeonGreen.withOpacity(0.5),
         padding: const EdgeInsets.symmetric(vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         elevation: 12,
         shadowColor: kNeonGreen.withOpacity(0.45),
       ),
-      child: const Text(
-        'CONNEXION →',
-        style: TextStyle(
-          fontSize: 18, fontWeight: FontWeight.w900,
-          letterSpacing: 2, color: kDarkBg,
-        ),
-      ),
+      child: _isLoading
+          ? const SizedBox(
+              height: 22,
+              width: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                valueColor: AlwaysStoppedAnimation<Color>(kDarkBg),
+              ),
+            )
+          : const Text(
+              'CONNEXION →',
+              style: TextStyle(
+                fontSize: 18, fontWeight: FontWeight.w900,
+                letterSpacing: 2, color: kDarkBg,
+              ),
+            ),
     );
   }
 
@@ -274,7 +329,10 @@ class _LoginScreenState extends State<LoginScreen> {
         Expanded(child: Divider(color: Colors.white.withOpacity(0.07), height: 1)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: Text('OR', style: TextStyle(color: kGrayText, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+          child: Text(
+            'OR',
+            style: TextStyle(color: kGrayText, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1),
+          ),
         ),
         Expanded(child: Divider(color: Colors.white.withOpacity(0.07), height: 1)),
       ],
@@ -283,7 +341,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _buildGoogleButton() {
     return GestureDetector(
-      onTap: () {},
+      onTap: () {}, // À implémenter avec google_sign_in
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 13),
         decoration: BoxDecoration(
@@ -298,10 +356,16 @@ class _LoginScreenState extends State<LoginScreen> {
               width: 20, height: 20,
               decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
               alignment: Alignment.center,
-              child: const Text('G', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF4285F4))),
+              child: const Text(
+                'G',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF4285F4)),
+              ),
             ),
             const SizedBox(width: 10),
-            const Text('Continue with Google', style: TextStyle(color: kLightGray, fontSize: 13, fontWeight: FontWeight.w600)),
+            const Text(
+              'Continue with Google',
+              style: TextStyle(color: kLightGray, fontSize: 13, fontWeight: FontWeight.w600),
+            ),
           ],
         ),
       ),
@@ -314,13 +378,14 @@ class _LoginScreenState extends State<LoginScreen> {
       children: [
         Text("Don't have an account?  ", style: TextStyle(color: kGrayText, fontSize: 13)),
         GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => RegistrScreen()),
-            );
-          },
-          child: const Text('Sign Up', style: TextStyle(color: kNeonGreen, fontSize: 13, fontWeight: FontWeight.w700)),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const RegisterScreen()),
+          ),
+          child: const Text(
+            'Sign Up',
+            style: TextStyle(color: kNeonGreen, fontSize: 13, fontWeight: FontWeight.w700),
+          ),
         ),
       ],
     );

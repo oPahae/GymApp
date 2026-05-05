@@ -34,7 +34,7 @@ class _ProfileClientState extends State<ProfileClient> {
       createdAt: DateTime(2021, 3, 15),
       clients: [], image: '',
     ), createdAt: DateTime(2021, 3, 15),
-    coachID: 1,
+    coachID: 1, email: '', password: '',
   );
 
   // ── State ─────────────────────────────────────────────────────────────────

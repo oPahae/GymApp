@@ -33,7 +33,7 @@ class _ProfileCoachState extends State<ProfileCoach> {
         goal: 'Lose Weight',
         frequency: 2,
         gender: 'Female',
-        coach: null, createdAt:  DateTime(2023, 7, 20), coachID: 1,
+        coach: null, createdAt:  DateTime(2023, 7, 20), coachID: 1, email: '', password: '',
       ),
       Client(
         id: 2,
@@ -46,7 +46,7 @@ class _ProfileCoachState extends State<ProfileCoach> {
         goal: 'Build Muscle',
         frequency: 4,
         gender: 'Male',
-        coach: null, createdAt:  DateTime(2023, 7, 20), coachID: 1,
+        coach: null, createdAt:  DateTime(2023, 7, 20), coachID: 1, email: '', password: '',
       ),
       Client(
         id: 3,
@@ -59,7 +59,7 @@ class _ProfileCoachState extends State<ProfileCoach> {
         goal: 'Stay Healthy',
         frequency: 1,
         gender: 'Female',
-        coach: null, createdAt:  DateTime(2023, 7, 20), coachID: 1,
+        coach: null, createdAt:  DateTime(2023, 7, 20), coachID: 1, email: '', password: '',
       ),
     ], image: '',
   );

@@ -10,19 +10,19 @@ final List<Client> fakeInvites = [
     id: 1, name: 'Amine Berrada', image: '',
     birth: DateTime(1998, 4, 15), weight: 82, height: 178,
     frequency: 4, goal: 'Prise de masse', weightGoal: 90,
-    createdAt: DateTime(2024, 11, 1), coachID: 1, gender: '',
+    createdAt: DateTime(2024, 11, 1), coachID: 1, gender: '', email: '', password: '',
   ),
   Client(
     id: 2, name: 'Fatima Zahra', image: '',
     birth: DateTime(2000, 8, 22), weight: 60, height: 163,
     frequency: 3, goal: 'Perte de poids', weightGoal: 52,
-    createdAt: DateTime(2024, 12, 5), coachID: 1, gender: '',
+    createdAt: DateTime(2024, 12, 5), coachID: 1, gender: '', email: '', password: '',
   ),
   Client(
     id: 3, name: 'Khalid Mansouri', image: '',
     birth: DateTime(1995, 1, 10), weight: 95, height: 182,
     frequency: 5, goal: 'Musculation', weightGoal: 88,
-    createdAt: DateTime(2025, 1, 20), coachID: 1, gender: '',
+    createdAt: DateTime(2025, 1, 20), coachID: 1, gender: '', email: '', password: '',
   ),
 ];
 
