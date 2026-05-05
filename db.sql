@@ -196,3 +196,21 @@ CREATE TABLE Messages (
     FOREIGN KEY (coachID) REFERENCES Coaches(id),
     FOREIGN KEY (clientID) REFERENCES Clients(id)
 );
+-- Programme coach
+CREATE TABLE CoachPrograms (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    text TEXT NOT NULL DEFAULT '',
+    updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    clientID INT NOT NULL UNIQUE,
+    coachID INT NOT NULL,
+    FOREIGN KEY (clientID) REFERENCES Clients(id),
+    FOREIGN KEY (coachID) REFERENCES Coaches(id)
+);
+CREATE TABLE WeightHistory (
+    id        INT PRIMARY KEY AUTO_INCREMENT,
+    weight    DOUBLE NOT NULL,
+    logDate   DATE NOT NULL,
+    clientID  INT NOT NULL,
+    FOREIGN KEY (clientID) REFERENCES Clients(id),
+    UNIQUE KEY unique_day (clientID, logDate)
+);
