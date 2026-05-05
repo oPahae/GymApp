@@ -1,16 +1,98 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:test_hh/components/header.dart';
 import 'package:test_hh/components/navbar.dart';
 import 'package:test_hh/constants/colors.dart';
-import 'package:test_hh/models/bodyPart.dart';
-import 'package:test_hh/models/exercice.dart';
-import 'package:test_hh/models/notes.dart';
-import 'package:test_hh/screens/exercice.dart'; // ← detail page
+import 'package:test_hh/screens/exercice.dart';
+
+const String _kBase = 'http://192.168.0.232:5000/api';
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+class NoteModel {
+  final String id;
+  final String text;
+  final String imageUrl;
+  const NoteModel({required this.id, required this.text, required this.imageUrl});
+
+  factory NoteModel.fromJson(Map<String, dynamic> j) => NoteModel(
+        id:       j['id'].toString(),
+        text:     j['text']     ?? '',
+        imageUrl: j['imageUrl'] ?? '',
+      );
+}
+
+class ExerciceModel {
+  final String id;
+  final String name;
+  final String imageUrl;
+  final String muscle;
+  final String video;
+  final String description;
+  final String bodyPartID;
+  final List<NoteModel> notes;
+  const ExerciceModel({
+    required this.id,
+    required this.name,
+    required this.imageUrl,
+    required this.muscle,
+    required this.video,
+    required this.description,
+    required this.bodyPartID,
+    required this.notes,
+  });
+
+  factory ExerciceModel.fromJson(Map<String, dynamic> j) => ExerciceModel(
+        id:          j['id'].toString(),
+        name:        j['name']        ?? '',
+        imageUrl:    j['imageUrl']    ?? '',
+        muscle:      j['muscle']      ?? '',
+        video:       j['video']       ?? '',
+        description: j['description'] ?? '',
+        bodyPartID:  j['bodyPartID'].toString(),
+        notes: (j['notes'] as List? ?? [])
+            .map((n) => NoteModel.fromJson(n))
+            .toList(),
+      );
+
+  String get typeLabel => muscle;
+  String get image     => imageUrl;
+}
+
+class BodyPartModel {
+  final String id;
+  final String name;
+  final String imageUrl;
+  final List<ExerciceModel> exercices;
+  const BodyPartModel({
+    required this.id,
+    required this.name,
+    required this.imageUrl,
+    required this.exercices,
+  });
+
+  factory BodyPartModel.fromJson(Map<String, dynamic> j) => BodyPartModel(
+        id:       j['id'].toString(),
+        name:     j['name']     ?? '',
+        imageUrl: j['imageUrl'] ?? '',
+        exercices: (j['exercises'] as List? ?? [])
+            .map((e) => ExerciceModel.fromJson(e))
+            .toList(),
+      );
+}
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 class ExercicesScreen extends StatefulWidget {
-  final BodyPartModel bodyPart;
+  final String bodyPartID; // on passe juste l'ID, on fetch le reste
+  final String bodyPartName; // pour afficher pendant le loading
 
-  const ExercicesScreen({super.key, required this.bodyPart});
+  const ExercicesScreen({
+    super.key,
+    required this.bodyPartID,
+    required this.bodyPartName,
+  });
 
   @override
   State<ExercicesScreen> createState() => _ExercicesScreenState();
@@ -19,8 +101,12 @@ class ExercicesScreen extends StatefulWidget {
 class _ExercicesScreenState extends State<ExercicesScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-
   String? _expandedId;
+
+  // ── State API ─────────────────────────────────────────────────────────────
+  BodyPartModel? _bodyPart;
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -28,6 +114,7 @@ class _ExercicesScreenState extends State<ExercicesScreen> {
     _searchController.addListener(
       () => setState(() => _searchQuery = _searchController.text.toLowerCase()),
     );
+    _fetchBodyPart();
   }
 
   @override
@@ -36,13 +123,46 @@ class _ExercicesScreenState extends State<ExercicesScreen> {
     super.dispose();
   }
 
-  List<ExerciceModel> get _filtered => widget.bodyPart.exercices
-      .where((e) => e.name.toLowerCase().contains(_searchQuery))
-      .toList();
+  // ── API ───────────────────────────────────────────────────────────────────
+
+  Future<void> _fetchBodyPart() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final uri = Uri.parse('$_kBase/exercice/bodyparts/${widget.bodyPartID}');
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) {
+        throw Exception('Erreur ${response.statusCode}');
+      }
+
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      if (body['success'] != true) throw Exception(body['message']);
+
+      setState(() {
+        _bodyPart = BodyPartModel.fromJson(body['data']);
+        _loading  = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error   = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  List<ExerciceModel> get _filtered {
+    if (_bodyPart == null) return [];
+    return _bodyPart!.exercices
+        .where((e) => e.name.toLowerCase().contains(_searchQuery))
+        .toList();
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final exercises = _filtered;
     return Scaffold(
       backgroundColor: kDarkBg,
       appBar: Header(),
@@ -52,18 +172,7 @@ class _ExercicesScreenState extends State<ExercicesScreen> {
             _buildTopBar(),
             _buildSearchBar(),
             const SizedBox(height: 14),
-            Expanded(
-              child: exercises.isEmpty
-                  ? _buildEmpty()
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(18, 0, 18, 100),
-                      itemCount: exercises.length,
-                      itemBuilder: (_, i) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _buildExerciceCard(exercises[i]),
-                      ),
-                    ),
-            ),
+            Expanded(child: _buildBody()),
           ],
         ),
       ),
@@ -71,7 +180,48 @@ class _ExercicesScreenState extends State<ExercicesScreen> {
     );
   }
 
-  // ─── TOP BAR ────────────────────────────────────────────────────────────────
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(
+        child: CircularProgressIndicator(color: kNeonGreen, strokeWidth: 2),
+      );
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.signal_wifi_off,
+                color: Colors.white.withOpacity(0.12), size: 36),
+            const SizedBox(height: 10),
+            GestureDetector(
+              onTap: _fetchBodyPart,
+              child: Text('Réessayer',
+                  style: TextStyle(
+                      color: kNeonGreen.withOpacity(0.6),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final exercises = _filtered;
+    return exercises.isEmpty
+        ? _buildEmpty()
+        : ListView.builder(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 100),
+            itemCount: exercises.length,
+            itemBuilder: (_, i) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _buildExerciceCard(exercises[i]),
+            ),
+          );
+  }
+
+  // ─── TOP BAR ──────────────────────────────────────────────────────────────
 
   Widget _buildTopBar() {
     return Padding(
@@ -81,8 +231,7 @@ class _ExercicesScreenState extends State<ExercicesScreen> {
           GestureDetector(
             onTap: () => Navigator.pop(context),
             child: Container(
-              width: 38,
-              height: 38,
+              width: 38, height: 38,
               decoration: BoxDecoration(
                 color: kDarkCard,
                 borderRadius: BorderRadius.circular(12),
@@ -98,33 +247,33 @@ class _ExercicesScreenState extends State<ExercicesScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.bodyPart.name.toUpperCase(),
+                  widget.bodyPartName.toUpperCase(),
                   style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 2,
-                  ),
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2),
                 ),
                 Text(
-                  '${widget.bodyPart.exercices.length} exercises',
+                  _bodyPart != null
+                      ? '${_bodyPart!.exercices.length} exercises'
+                      : '...',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.38),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                  ),
+                      color: Colors.white.withOpacity(0.38),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500),
                 ),
               ],
             ),
           ),
-          if (widget.bodyPart.exercices.isNotEmpty)
-            _buildTypeChip(widget.bodyPart.exercices.first.typeLabel),
+          if (_bodyPart != null && _bodyPart!.exercices.isNotEmpty)
+            _buildTypeChip(_bodyPart!.exercices.first.typeLabel),
         ],
       ),
     );
   }
 
-  // ─── SEARCH BAR ─────────────────────────────────────────────────────────────
+  // ─── SEARCH BAR ───────────────────────────────────────────────────────────
 
   Widget _buildSearchBar() {
     return Padding(
@@ -140,8 +289,8 @@ class _ExercicesScreenState extends State<ExercicesScreen> {
           style: const TextStyle(color: Colors.white, fontSize: 14),
           decoration: InputDecoration(
             hintText: 'Search exercises...',
-            hintStyle:
-                TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 14),
+            hintStyle: TextStyle(
+                color: Colors.white.withOpacity(0.3), fontSize: 14),
             prefixIcon: Icon(Icons.search,
                 color: Colors.white.withOpacity(0.3), size: 20),
             suffixIcon: _searchQuery.isNotEmpty
@@ -159,7 +308,7 @@ class _ExercicesScreenState extends State<ExercicesScreen> {
     );
   }
 
-  // ─── EXERCISE CARD ──────────────────────────────────────────────────────────
+  // ─── EXERCISE CARD ────────────────────────────────────────────────────────
 
   Widget _buildExerciceCard(ExerciceModel ex) {
     final isExpanded = _expandedId == ex.id;
@@ -176,14 +325,16 @@ class _ExercicesScreenState extends State<ExercicesScreen> {
       clipBehavior: Clip.hardEdge,
       child: Column(
         children: [
-          // ── Header row: tap → detail page ──
+          // ── Header row ──
           GestureDetector(
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ExerciceScreen(exercice: ex),
-              ),
-            ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ExerciceScreen(exerciceID: ex.id, exerciceName: ex.name,)
+                ),
+              );
+            },
             child: SizedBox(
               height: 90,
               child: Stack(
@@ -224,32 +375,27 @@ class _ExercicesScreenState extends State<ExercicesScreen> {
                             children: [
                               _buildTypeChip(ex.typeLabel),
                               const SizedBox(height: 5),
-                              Text(
-                                ex.name,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
+                              Text(ex.name,
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700)),
                               const SizedBox(height: 3),
                               Text(
                                 ex.description,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.38),
-                                  fontSize: 11,
-                                ),
+                                    color: Colors.white.withOpacity(0.38),
+                                    fontSize: 11),
                               ),
                             ],
                           ),
                         ),
                         const SizedBox(width: 8),
-                        // Expand toggle (secondary action)
                         GestureDetector(
-                          onTap: () => setState(
-                              () => _expandedId = isExpanded ? null : ex.id),
+                          onTap: () => setState(() =>
+                              _expandedId = isExpanded ? null : ex.id),
                           child: AnimatedRotation(
                             turns: isExpanded ? 0.5 : 0,
                             duration: const Duration(milliseconds: 250),
@@ -268,7 +414,7 @@ class _ExercicesScreenState extends State<ExercicesScreen> {
             ),
           ),
 
-          // ── Expandable quick-notes ──
+          // ── Expandable notes ──
           AnimatedSize(
             duration: const Duration(milliseconds: 260),
             curve: Curves.easeInOut,
@@ -279,118 +425,48 @@ class _ExercicesScreenState extends State<ExercicesScreen> {
                       const Divider(height: 1, color: Colors.white10),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-                        child: Text(
-                          ex.description,
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.55),
-                            fontSize: 12,
-                            height: 1.55,
-                          ),
-                        ),
+                        child: Text(ex.description,
+                            style: TextStyle(
+                                color: Colors.white.withOpacity(0.55),
+                                fontSize: 12,
+                                height: 1.55)),
                       ),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.format_list_bulleted,
-                                color: kNeonGreen, size: 14),
-                            const SizedBox(width: 6),
-                            Text(
-                              'INSTRUCTIONS',
+                        child: Row(children: [
+                          const Icon(Icons.format_list_bulleted,
+                              color: kNeonGreen, size: 14),
+                          const SizedBox(width: 6),
+                          Text('INSTRUCTIONS',
                               style: TextStyle(
-                                color: kNeonGreen.withOpacity(0.9),
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 1,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      ...ex.notes.asMap().entries.map(
-                            (entry) => _buildNoteItem(entry.key + 1,
-                                entry.value, entry.key == ex.notes.length - 1),
-                          ),
-                      // "See full details" shortcut
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(14, 4, 14, 12),
-                        child: GestureDetector(
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ExerciceScreen(exercice: ex),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                'SEE FULL DETAILS',
-                                style: TextStyle(
-                                  color: kNeonGreen.withOpacity(0.7),
+                                  color: kNeonGreen.withOpacity(0.9),
                                   fontSize: 10,
                                   fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.8,
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              Icon(Icons.arrow_forward_ios,
-                                  color: kNeonGreen.withOpacity(0.7), size: 10),
-                            ],
-                          ),
-                        ),
+                                  letterSpacing: 1)),
+                        ]),
                       ),
+                      ...ex.notes.asMap().entries.map((entry) =>
+                          _buildNoteItem(entry.key + 1, entry.value,
+                              entry.key == ex.notes.length - 1)),
                     ],
                   )
                 : isExpanded
-                    ? Column(
-                        children: [
-                          const Divider(height: 1, color: Colors.white10),
-                          Padding(
-                            padding:
-                                const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  ex.description,
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.55),
-                                    fontSize: 12,
-                                    height: 1.55,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.04),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                        color:
-                                            Colors.white.withOpacity(0.08)),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.info_outline,
-                                          color: Colors.white.withOpacity(0.3),
-                                          size: 14),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'No instructions added yet.',
-                                        style: TextStyle(
-                                          color: Colors.white.withOpacity(0.3),
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      )
+                    ? Column(children: [
+                        const Divider(height: 1, color: Colors.white10),
+                        Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Row(children: [
+                            Icon(Icons.info_outline,
+                                color: Colors.white.withOpacity(0.3),
+                                size: 14),
+                            const SizedBox(width: 8),
+                            Text('No instructions added yet.',
+                                style: TextStyle(
+                                    color: Colors.white.withOpacity(0.3),
+                                    fontSize: 12)),
+                          ]),
+                        ),
+                      ])
                     : const SizedBox.shrink(),
           ),
         ],
@@ -398,7 +474,7 @@ class _ExercicesScreenState extends State<ExercicesScreen> {
     );
   }
 
-  // ─── Note item ───────────────────────────────────────────────────────────────
+  // ─── Note item ────────────────────────────────────────────────────────────
 
   Widget _buildNoteItem(int index, NoteModel note, bool isLast) {
     return Column(
@@ -409,8 +485,7 @@ class _ExercicesScreenState extends State<ExercicesScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 22,
-                height: 22,
+                width: 22, height: 22,
                 margin: const EdgeInsets.only(top: 1, right: 10),
                 decoration: BoxDecoration(
                   color: kNeonGreen.withOpacity(0.15),
@@ -418,14 +493,11 @@ class _ExercicesScreenState extends State<ExercicesScreen> {
                   border: Border.all(color: kNeonGreen.withOpacity(0.3)),
                 ),
                 child: Center(
-                  child: Text(
-                    '$index',
-                    style: const TextStyle(
-                      color: kNeonGreen,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
+                  child: Text('$index',
+                      style: const TextStyle(
+                          color: kNeonGreen,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800)),
                 ),
               ),
               Expanded(
@@ -433,26 +505,21 @@ class _ExercicesScreenState extends State<ExercicesScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const SizedBox(height: 2),
-                    Text(
-                      note.text,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.75),
-                        fontSize: 12,
-                        height: 1.5,
-                      ),
-                    ),
+                    Text(note.text,
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.75),
+                            fontSize: 12,
+                            height: 1.5)),
                     if (note.imageUrl.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(10),
-                        child: Image.network(
-                          note.imageUrl,
-                          height: 120,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) =>
-                              const SizedBox.shrink(),
-                        ),
+                        child: Image.network(note.imageUrl,
+                            height: 120,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                const SizedBox.shrink()),
                       ),
                     ],
                     const SizedBox(height: 10),
@@ -468,7 +535,7 @@ class _ExercicesScreenState extends State<ExercicesScreen> {
     );
   }
 
-  // ─── Shared ──────────────────────────────────────────────────────────────────
+  // ─── Shared ───────────────────────────────────────────────────────────────
 
   Widget _buildTypeChip(String label) {
     return Container(
@@ -478,15 +545,12 @@ class _ExercicesScreenState extends State<ExercicesScreen> {
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: kNeonGreen.withOpacity(0.22), width: 1),
       ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: kNeonGreen,
-          fontSize: 9,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.6,
-        ),
-      ),
+      child: Text(label,
+          style: const TextStyle(
+              color: kNeonGreen,
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.6)),
     );
   }
 
@@ -500,14 +564,11 @@ class _ExercicesScreenState extends State<ExercicesScreen> {
             Icon(Icons.fitness_center,
                 color: Colors.white.withOpacity(0.1), size: 52),
             const SizedBox(height: 12),
-            Text(
-              'No exercises found',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.28),
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+            Text('No exercises found',
+                style: TextStyle(
+                    color: Colors.white.withOpacity(0.28),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500)),
           ],
         ),
       ),

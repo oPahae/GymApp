@@ -3,6 +3,7 @@ import mysql from "mysql2/promise";
 const pool = mysql.createPool({
   host: "localhost",
   user: "root",
+  port:3308,
   password: "1234",
   database: "gymappdb",
   waitForConnections: true,

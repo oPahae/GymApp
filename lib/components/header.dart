@@ -18,21 +18,7 @@ class Header extends StatelessWidget implements PreferredSizeWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Row(
-              children: [
-                _buildChatButton(),
-                const SizedBox(width: 14),
-                const Text(
-                  '9:41',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ],
-            ),
+            _buildChatButton(),
             RichText(
               text: TextSpan(
                 children: [
@@ -57,17 +43,7 @@ class Header extends StatelessWidget implements PreferredSizeWidget {
                 ],
               ),
             ),
-            Row(
-              children: [
-                const Icon(Icons.signal_cellular_alt, color: Colors.white, size: 18),
-                const SizedBox(width: 4),
-                const Icon(Icons.wifi, color: Colors.white, size: 18),
-                const SizedBox(width: 4),
-                const Icon(Icons.battery_full, color: Colors.white, size: 18),
-                const SizedBox(width: 12),
-                _buildAvatar(),
-              ],
-            ),
+            _buildAvatar(),
           ],
         ),
       ),

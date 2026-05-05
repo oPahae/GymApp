@@ -1,287 +1,36 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:test_hh/components/header.dart';
 import 'package:test_hh/components/navbar.dart';
 import 'package:test_hh/constants/colors.dart';
-import 'package:test_hh/models/bodyPart.dart';
-import 'package:test_hh/models/exercice.dart';
-import 'package:test_hh/screens/exercices.dart';
+import 'package:test_hh/screens/exercices.dart'; // ton ExercicesScreen
 
-// ─── Mock Data ─────────────────────────────────────────────────────────────────
+const String _kBase = 'http://192.168.0.232:5000/api';
+// ─── Model ────────────────────────────────────────────────────────────────────
 
-final List<BodyPartModel> kBodyParts = [
-  BodyPartModel(
-    id: 'bp1',
-    name: 'Chest',
-    imageUrl:
-        'https://images.pexels.com/photos/3837781/pexels-photo-3837781.jpeg?auto=compress&cs=tinysrgb&w=400',
-    exercices: [
-      ExerciceModel(
-        id: 'e1',
-        name: 'Bench Press',
-        description: 'A compound push exercise targeting the pectoral muscles.',
-        image:
-            'https://images.pexels.com/photos/3837781/pexels-photo-3837781.jpeg?auto=compress&cs=tinysrgb&w=400',
-        video: '',
-        part: _placeholderPart('bp1', 'Chest'),
-        type: ExerciceType.strength,
-        notes: [],
-      ),
-      ExerciceModel(
-        id: 'e2',
-        name: 'Push-Up',
-        description: 'Bodyweight exercise engaging chest, shoulders and triceps.',
-        image:
-            'https://images.pexels.com/photos/4162449/pexels-photo-4162449.jpeg?auto=compress&cs=tinysrgb&w=400',
-        video: '',
-        part: _placeholderPart('bp1', 'Chest'),
-        type: ExerciceType.strength,
-        notes: [],
-      ),
-      ExerciceModel(
-        id: 'e3',
-        name: 'Cable Fly',
-        description: 'Isolation exercise for inner and outer chest definition.',
-        image:
-            'https://images.pexels.com/photos/1552242/pexels-photo-1552242.jpeg?auto=compress&cs=tinysrgb&w=400',
-        video: '',
-        part: _placeholderPart('bp1', 'Chest'),
-        type: ExerciceType.strength,
-        notes: [],
-      ),
-    ],
-  ),
-  BodyPartModel(
-    id: 'bp2',
-    name: 'Back',
-    imageUrl:
-        'https://images.pexels.com/photos/1431282/pexels-photo-1431282.jpeg?auto=compress&cs=tinysrgb&w=400',
-    exercices: [
-      ExerciceModel(
-        id: 'e4',
-        name: 'Pull-Up',
-        description: 'Compound upper-body pull targeting lats and biceps.',
-        image:
-            'https://images.pexels.com/photos/1431282/pexels-photo-1431282.jpeg?auto=compress&cs=tinysrgb&w=400',
-        video: '',
-        part: _placeholderPart('bp2', 'Back'),
-        type: ExerciceType.strength,
-        notes: [],
-      ),
-      ExerciceModel(
-        id: 'e5',
-        name: 'Barbell Row',
-        description: 'Heavy compound movement for overall back thickness.',
-        image:
-            'https://images.pexels.com/photos/3837757/pexels-photo-3837757.jpeg?auto=compress&cs=tinysrgb&w=400',
-        video: '',
-        part: _placeholderPart('bp2', 'Back'),
-        type: ExerciceType.strength,
-        notes: [],
-      ),
-    ],
-  ),
-  BodyPartModel(
-    id: 'bp3',
-    name: 'Legs',
-    imageUrl:
-        'https://images.pexels.com/photos/4162451/pexels-photo-4162451.jpeg?auto=compress&cs=tinysrgb&w=400',
-    exercices: [
-      ExerciceModel(
-        id: 'e6',
-        name: 'Squat',
-        description: 'King of leg exercises — quads, hamstrings, glutes.',
-        image:
-            'https://images.pexels.com/photos/4162451/pexels-photo-4162451.jpeg?auto=compress&cs=tinysrgb&w=400',
-        video: '',
-        part: _placeholderPart('bp3', 'Legs'),
-        type: ExerciceType.strength,
-        notes: [],
-      ),
-      ExerciceModel(
-        id: 'e7',
-        name: 'Leg Press',
-        description: 'Machine-based quad and glute developer.',
-        image:
-            'https://images.pexels.com/photos/3837800/pexels-photo-3837800.jpeg?auto=compress&cs=tinysrgb&w=400',
-        video: '',
-        part: _placeholderPart('bp3', 'Legs'),
-        type: ExerciceType.strength,
-        notes: [],
-      ),
-      ExerciceModel(
-        id: 'e8',
-        name: 'Romanian Deadlift',
-        description: 'Hip-hinge movement targeting hamstrings and glutes.',
-        image:
-            'https://images.pexels.com/photos/1552252/pexels-photo-1552252.jpeg?auto=compress&cs=tinysrgb&w=400',
-        video: '',
-        part: _placeholderPart('bp3', 'Legs'),
-        type: ExerciceType.strength,
-        notes: [],
-      ),
-    ],
-  ),
-  BodyPartModel(
-    id: 'bp4',
-    name: 'Shoulders',
-    imageUrl:
-        'https://images.pexels.com/photos/1552249/pexels-photo-1552249.jpeg?auto=compress&cs=tinysrgb&w=400',
-    exercices: [
-      ExerciceModel(
-        id: 'e9',
-        name: 'Overhead Press',
-        description: 'Primary shoulder mass builder — front and lateral delts.',
-        image:
-            'https://images.pexels.com/photos/1552249/pexels-photo-1552249.jpeg?auto=compress&cs=tinysrgb&w=400',
-        video: '',
-        part: _placeholderPart('bp4', 'Shoulders'),
-        type: ExerciceType.strength,
-        notes: [],
-      ),
-      ExerciceModel(
-        id: 'e10',
-        name: 'Lateral Raise',
-        description: 'Isolation for the lateral deltoid head.',
-        image:
-            'https://images.pexels.com/photos/3837763/pexels-photo-3837763.jpeg?auto=compress&cs=tinysrgb&w=400',
-        video: '',
-        part: _placeholderPart('bp4', 'Shoulders'),
-        type: ExerciceType.strength,
-        notes: [],
-      ),
-    ],
-  ),
-  BodyPartModel(
-    id: 'bp5',
-    name: 'Arms',
-    imageUrl:
-        'https://images.pexels.com/photos/3837761/pexels-photo-3837761.jpeg?auto=compress&cs=tinysrgb&w=400',
-    exercices: [
-      ExerciceModel(
-        id: 'e11',
-        name: 'Barbell Curl',
-        description: 'Classic bicep mass builder with full range of motion.',
-        image:
-            'https://images.pexels.com/photos/3837761/pexels-photo-3837761.jpeg?auto=compress&cs=tinysrgb&w=400',
-        video: '',
-        part: _placeholderPart('bp5', 'Arms'),
-        type: ExerciceType.strength,
-        notes: [],
-      ),
-      ExerciceModel(
-        id: 'e12',
-        name: 'Tricep Dip',
-        description: 'Compound tricep exercise using bodyweight.',
-        image:
-            'https://images.pexels.com/photos/4162455/pexels-photo-4162455.jpeg?auto=compress&cs=tinysrgb&w=400',
-        video: '',
-        part: _placeholderPart('bp5', 'Arms'),
-        type: ExerciceType.strength,
-        notes: [],
-      ),
-    ],
-  ),
-  BodyPartModel(
-    id: 'bp6',
-    name: 'Core',
-    imageUrl:
-        'https://images.pexels.com/photos/3823039/pexels-photo-3823039.jpeg?auto=compress&cs=tinysrgb&w=400',
-    exercices: [
-      ExerciceModel(
-        id: 'e13',
-        name: 'Plank',
-        description: 'Isometric core stabiliser — full mid-section activation.',
-        image:
-            'https://images.pexels.com/photos/3823039/pexels-photo-3823039.jpeg?auto=compress&cs=tinysrgb&w=400',
-        video: '',
-        part: _placeholderPart('bp6', 'Core'),
-        type: ExerciceType.strength,
-        notes: [],
-      ),
-      ExerciceModel(
-        id: 'e14',
-        name: 'Cable Crunch',
-        description: 'Weighted crunch for upper abdominal hypertrophy.',
-        image:
-            'https://images.pexels.com/photos/1547248/pexels-photo-1547248.jpeg?auto=compress&cs=tinysrgb&w=400',
-        video: '',
-        part: _placeholderPart('bp6', 'Core'),
-        type: ExerciceType.strength,
-        notes: [],
-      ),
-    ],
-  ),
-  BodyPartModel(
-    id: 'bp7',
-    name: 'Cardio',
-    imageUrl:
-        'https://images.pexels.com/photos/936094/pexels-photo-936094.jpeg?auto=compress&cs=tinysrgb&w=400',
-    exercices: [
-      ExerciceModel(
-        id: 'e15',
-        name: 'Treadmill Run',
-        description: 'Steady-state or interval running for cardiovascular health.',
-        image:
-            'https://images.pexels.com/photos/936094/pexels-photo-936094.jpeg?auto=compress&cs=tinysrgb&w=400',
-        video: '',
-        part: _placeholderPart('bp7', 'Cardio'),
-        type: ExerciceType.cardio,
-        notes: [],
-      ),
-      ExerciceModel(
-        id: 'e16',
-        name: 'Jump Rope',
-        description: 'High-intensity cardio improving coordination and stamina.',
-        image:
-            'https://images.pexels.com/photos/4164761/pexels-photo-4164761.jpeg?auto=compress&cs=tinysrgb&w=400',
-        video: '',
-        part: _placeholderPart('bp7', 'Cardio'),
-        type: ExerciceType.cardio,
-        notes: [],
-      ),
-    ],
-  ),
-  BodyPartModel(
-    id: 'bp8',
-    name: 'Flexibility',
-    imageUrl:
-        'https://images.pexels.com/photos/317157/pexels-photo-317157.jpeg?auto=compress&cs=tinysrgb&w=400',
-    exercices: [
-      ExerciceModel(
-        id: 'e17',
-        name: 'Hip Flexor Stretch',
-        description: 'Deep lunge stretch releasing tight hip flexors.',
-        image:
-            'https://images.pexels.com/photos/317157/pexels-photo-317157.jpeg?auto=compress&cs=tinysrgb&w=400',
-        video: '',
-        part: _placeholderPart('bp8', 'Flexibility'),
-        type: ExerciceType.flexibility,
-        notes: [],
-      ),
-      ExerciceModel(
-        id: 'e18',
-        name: 'Seated Hamstring Stretch',
-        description: 'Static stretch improving posterior chain flexibility.',
-        image:
-            'https://images.pexels.com/photos/4056535/pexels-photo-4056535.jpeg?auto=compress&cs=tinysrgb&w=400',
-        video: '',
-        part: _placeholderPart('bp8', 'Flexibility'),
-        type: ExerciceType.flexibility,
-        notes: [],
-      ),
-    ],
-  ),
-];
+class BodyPartModel {
+  final String id;
+  final String name;
+  final String imageUrl;
+  final int exerciceCount; // on stocke juste le count pour l'affichage
 
-// Helper to avoid circular const dependency in mock data
-BodyPartModel _placeholderPart(String id, String name) => BodyPartModel(
-      id: id,
-      name: name,
-      imageUrl: '',
-      exercices: [],
-    );
+  const BodyPartModel({
+    required this.id,
+    required this.name,
+    required this.imageUrl,
+    required this.exerciceCount,
+  });
 
-// ─── Screen ────────────────────────────────────────────────────────────────────
+  factory BodyPartModel.fromJson(Map<String, dynamic> j) => BodyPartModel(
+        id:            j['id'].toString(),
+        name:          j['name']     ?? '',
+        imageUrl:      j['imageUrl'] ?? '',
+        exerciceCount: (j['exercises'] as List? ?? []).length,
+      );
+}
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 class BodyPartsScreen extends StatefulWidget {
   const BodyPartsScreen({super.key});
@@ -294,12 +43,18 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  // ── State API ─────────────────────────────────────────────────────────────
+  List<BodyPartModel> _bodyParts = [];
+  bool _loading = true;
+  String? _error;
+
   @override
   void initState() {
     super.initState();
     _searchController.addListener(
       () => setState(() => _searchQuery = _searchController.text.toLowerCase()),
     );
+    _fetchBodyParts();
   }
 
   @override
@@ -308,13 +63,47 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
     super.dispose();
   }
 
-  List<BodyPartModel> get _filtered => kBodyParts
+  // ── API ───────────────────────────────────────────────────────────────────
+
+  Future<void> _fetchBodyParts() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final uri = Uri.parse('$_kBase/exercice/bodyparts');
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) {
+        throw Exception('Erreur ${response.statusCode}');
+      }
+
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      if (body['success'] != true) throw Exception(body['message']);
+
+      final list = (body['data'] as List)
+          .map((e) => BodyPartModel.fromJson(e))
+          .toList();
+
+      setState(() {
+        _bodyParts = list;
+        _loading   = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error   = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  List<BodyPartModel> get _filtered => _bodyParts
       .where((b) => b.name.toLowerCase().contains(_searchQuery))
       .toList();
 
+  // ── Build ─────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
-    final parts = _filtered;
     return Scaffold(
       backgroundColor: kDarkBg,
       appBar: Header(),
@@ -324,22 +113,7 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
             _buildTopBar(),
             _buildSearchBar(),
             const SizedBox(height: 14),
-            Expanded(
-              child: parts.isEmpty
-                  ? _buildEmpty()
-                  : GridView.builder(
-                      padding: const EdgeInsets.fromLTRB(18, 0, 18, 100),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                        childAspectRatio: 0.82,
-                      ),
-                      itemCount: parts.length,
-                      itemBuilder: (_, i) => _buildBodyPartCard(parts[i]),
-                    ),
-            ),
+            Expanded(child: _buildBody()),
           ],
         ),
       ),
@@ -347,7 +121,51 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
     );
   }
 
-  // ─── TOP BAR ────────────────────────────────────────────────────────────────
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(
+        child: CircularProgressIndicator(color: kNeonGreen, strokeWidth: 2),
+      );
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.signal_wifi_off,
+                color: Colors.white.withOpacity(0.12), size: 36),
+            const SizedBox(height: 10),
+            GestureDetector(
+              onTap: _fetchBodyParts,
+              child: Text('Réessayer',
+                  style: TextStyle(
+                      color: kNeonGreen.withOpacity(0.6),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final parts = _filtered;
+    return parts.isEmpty
+        ? _buildEmpty()
+        : GridView.builder(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 100),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 0.82,
+            ),
+            itemCount: parts.length,
+            itemBuilder: (_, i) => _buildBodyPartCard(parts[i]),
+          );
+  }
+
+  // ─── TOP BAR ──────────────────────────────────────────────────────────────
 
   Widget _buildTopBar() {
     return Padding(
@@ -355,12 +173,9 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
       child: Row(
         children: [
           GestureDetector(
-            onTap: () {
-              if (Navigator.canPop(context)) Navigator.pop(context);
-            },
+            onTap: () { if (Navigator.canPop(context)) Navigator.pop(context); },
             child: Container(
-              width: 38,
-              height: 38,
+              width: 38, height: 38,
               decoration: BoxDecoration(
                 color: kDarkCard,
                 borderRadius: BorderRadius.circular(12),
@@ -372,15 +187,12 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
           ),
           const SizedBox(width: 14),
           const Expanded(
-            child: Text(
-              'BODY PARTS',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 2,
-              ),
-            ),
+            child: Text('BODY PARTS',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 2)),
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -390,13 +202,12 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
               border: Border.all(color: kNeonGreen.withOpacity(0.3)),
             ),
             child: Text(
-              '${kBodyParts.length} GROUPS',
+              '${_bodyParts.length} GROUPS',
               style: const TextStyle(
-                color: kNeonGreen,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.6,
-              ),
+                  color: kNeonGreen,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6),
             ),
           ),
         ],
@@ -404,7 +215,7 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
     );
   }
 
-  // ─── SEARCH BAR ─────────────────────────────────────────────────────────────
+  // ─── SEARCH BAR ───────────────────────────────────────────────────────────
 
   Widget _buildSearchBar() {
     return Padding(
@@ -420,8 +231,8 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
           style: const TextStyle(color: Colors.white, fontSize: 14),
           decoration: InputDecoration(
             hintText: 'Search muscle group...',
-            hintStyle:
-                TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 14),
+            hintStyle: TextStyle(
+                color: Colors.white.withOpacity(0.3), fontSize: 14),
             prefixIcon: Icon(Icons.search,
                 color: Colors.white.withOpacity(0.3), size: 20),
             suffixIcon: _searchQuery.isNotEmpty
@@ -439,14 +250,17 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
     );
   }
 
-  // ─── BODY PART CARD ─────────────────────────────────────────────────────────
+  // ─── BODY PART CARD ───────────────────────────────────────────────────────
 
   Widget _buildBodyPartCard(BodyPartModel part) {
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => ExercicesScreen(bodyPart: part),
+          builder: (_) => ExercicesScreen(
+            bodyPartID:   part.id,
+            bodyPartName: part.name,
+          ),
         ),
       ),
       child: Container(
@@ -459,37 +273,30 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Background image
             Image.network(
               part.imageUrl,
               fit: BoxFit.cover,
               errorBuilder: (_, __, ___) => Container(
                 color: const Color(0xFF1A1A1A),
-                child:
-                    const Icon(Icons.fitness_center, color: Colors.white12, size: 40),
+                child: const Icon(Icons.fitness_center,
+                    color: Colors.white12, size: 40),
               ),
             ),
-            // Dark gradient overlay
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withOpacity(0.88),
-                  ],
+                  colors: [Colors.transparent, Colors.black.withOpacity(0.88)],
                   stops: const [0.35, 1.0],
                 ),
               ),
             ),
-            // Content
             Padding(
               padding: const EdgeInsets.all(14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Exercises count badge (top-right)
                   Align(
                     alignment: Alignment.topRight,
                     child: Container(
@@ -501,40 +308,33 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
                         border: Border.all(color: Colors.white12),
                       ),
                       child: Text(
-                        '${part.exercices.length} exercises',
+                        '${part.exerciceCount} exercises',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.65),
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                        ),
+                            color: Colors.white.withOpacity(0.65),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600),
                       ),
                     ),
                   ),
                   const Spacer(),
-                  // Name
                   Text(
                     part.name.toUpperCase(),
                     style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.2,
-                      shadows: [Shadow(color: Colors.black87, blurRadius: 8)],
-                    ),
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.2,
+                        shadows: [Shadow(color: Colors.black87, blurRadius: 8)]),
                   ),
                   const SizedBox(height: 6),
-                  // Arrow row
                   Row(
                     children: [
-                      Text(
-                        'EXPLORE',
-                        style: TextStyle(
-                          color: kNeonGreen.withOpacity(0.85),
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1,
-                        ),
-                      ),
+                      Text('EXPLORE',
+                          style: TextStyle(
+                              color: kNeonGreen.withOpacity(0.85),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1)),
                       const SizedBox(width: 4),
                       Icon(Icons.arrow_forward_ios,
                           color: kNeonGreen.withOpacity(0.85), size: 10),
@@ -549,7 +349,7 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
     );
   }
 
-  // ─── EMPTY STATE ────────────────────────────────────────────────────────────
+  // ─── EMPTY STATE ──────────────────────────────────────────────────────────
 
   Widget _buildEmpty() {
     return Center(
@@ -561,14 +361,11 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
             Icon(Icons.search_off,
                 color: Colors.white.withOpacity(0.12), size: 52),
             const SizedBox(height: 12),
-            Text(
-              'No results found',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.28),
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+            Text('No results found',
+                style: TextStyle(
+                    color: Colors.white.withOpacity(0.28),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500)),
           ],
         ),
       ),
