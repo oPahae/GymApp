@@ -48,8 +48,8 @@ router.get("/summary/:clientID", async (req, res) => {
       "SELECT COALESCE(SUM(calories), 0) AS activityCalories FROM Activities WHERE dayID = ?",
       [dayID]
     );
-    const activityCalories = actRows[0].activityCalories ?? 0;
-    const totalBurned = BASE_BURNED + activityCalories;
+    const activityCalories = Number(actRows[0].activityCalories) ?? 0;
+    const totalBurned = Number(BASE_BURNED) + activityCalories;
 
     // ── Calories consumed from ingredients today ──
     const [ingCalRows] = await conn.execute(
@@ -71,7 +71,7 @@ router.get("/summary/:clientID", async (req, res) => {
     );
     const recipeCalories = recCalRows[0].total ?? 0;
 
-    const totalConsumed = ingredientCalories + recipeCalories;
+    const totalConsumed = Number(ingredientCalories) + Number(recipeCalories);
     const remaining = Math.max(0, CALORIE_GOAL - totalConsumed);
 
     res.json({

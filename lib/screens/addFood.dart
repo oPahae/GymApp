@@ -9,20 +9,14 @@ import 'package:test_hh/constants/urls.dart';
 import 'package:test_hh/models/food.dart';
 import 'package:test_hh/models/recipe.dart';
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-// localhost ne fonctionne pas depuis un émulateur/device physique.
-// - Émulateur Android  → 10.0.2.2
-// - Device physique    → l'IP locale de ton PC (ex: 192.168.1.42)
-// - iOS Simulator      → localhost fonctionne
-// - Web (kIsWeb)       → localhost fonctionne
-
 const int kClientID = 1;
-const String kMealtime = 'breakfast'; // breakfast | lunch | dinner | snacks
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
 class AddFoodScreen extends StatefulWidget {
-  const AddFoodScreen({super.key});
+  AddFoodScreen({ super.key, required this.kMealtime });
+
+  String kMealtime = 'breakfast';
 
   @override
   State<AddFoodScreen> createState() => _AddFoodScreenState();
@@ -163,7 +157,7 @@ class _AddFoodScreenState extends State<AddFoodScreen>
 
     final payload = {
       'clientID': kClientID,
-      'mealtime': kMealtime,
+      'mealtime': widget.kMealtime,
       'items': items,
     };
 
@@ -246,7 +240,7 @@ class _AddFoodScreenState extends State<AddFoodScreen>
       body: SafeArea(
         child: Column(
           children: [
-            _buildTopBar(),
+            _buildTopBar(widget.kMealtime),
             _buildSearchBar(),
             _buildTabBar(),
             Expanded(
@@ -268,7 +262,7 @@ class _AddFoodScreenState extends State<AddFoodScreen>
 
   // ─── Top Bar ──────────────────────────────────────────────────────────────────
 
-  Widget _buildTopBar() {
+  Widget _buildTopBar(String kMealtime) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
       child: Row(
@@ -286,9 +280,9 @@ class _AddFoodScreenState extends State<AddFoodScreen>
             ),
           ),
           const SizedBox(width: 14),
-          const Expanded(
-            child: Text('ADD FOOD',
-                style: TextStyle(
+          Expanded(
+            child: Text('ADD FOOD ($kMealtime)',
+                style: const TextStyle(
                     color: Colors.white, fontSize: 16,
                     fontWeight: FontWeight.w800, letterSpacing: 2)),
           ),

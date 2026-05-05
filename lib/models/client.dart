@@ -47,6 +47,22 @@ class Client {
         coach: json['coach'] != null ? Coach.fromJson(json['coach']) : null, // Parsing du coach
       );
 
+  factory Client.fromJson2(Map<String, dynamic> json) => Client(      
+    id: (json['id'] as num?)?.toInt() ?? 0,
+    name: json['name'] ?? '',
+    image: json['image'] ?? '',
+    birth: DateTime.parse(json['birth']),
+    weight: (json['weight'] as num?)?.toDouble() ?? 0.0,
+    height: (json['height'] as num?)?.toDouble() ?? 0.0,
+    frequency: (json['frequency'] as num?)?.toInt() ?? 0,
+    goal: json['goal'] ?? '',
+    weightGoal: (json['weightGoal'] as num?)?.toDouble() ?? 0.0,
+    createdAt: DateTime.parse(json['createdAt']),
+    coachID: (json['coachID'] as num?)?.toInt() ?? 0,
+    gender: json['gender'] ?? 'Male',
+    coach: json['coach'] != null ? Coach.fromJson(json['coach']) : null,
+  );
+
   get age => null;
 
   Map<String, dynamic> toJson() => {

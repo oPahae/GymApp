@@ -773,6 +773,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return _buildMealCard(
       mealType: label,
+      mealtime: mealtime,
       totalKcal: '$totalKcal kcal',
       headerImageUrl: headerImage,
       items: items,
@@ -781,6 +782,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildMealCard({
     required String mealType,
+    required String mealtime,
     required String totalKcal,
     required String headerImageUrl,
     required List<_MealItem> items,
@@ -874,7 +876,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const Divider(height: 1, color: Colors.white10),
           Padding(
             padding: const EdgeInsets.all(14),
-            child: _buildAddFoodButton(),
+            child: _buildAddFoodButton(mealtime),
           ),
         ],
       ),
@@ -924,10 +926,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildAddFoodButton() {
+  Widget _buildAddFoodButton(String mealtime) {
     return DashedBorderButton(
       onTap: () {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => const AddFoodScreen()))
+        Navigator.push(context, MaterialPageRoute(builder: (_) => AddFoodScreen(kMealtime: mealtime)))
             .then((_) => _fetchMeals()); // refresh meals on return
       },
       child: const Row(
@@ -1153,8 +1155,17 @@ class _CircularProgressPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+
+    final safeProgress = progress.isNaN || progress.isInfinite
+        ? 0.0
+        : progress.clamp(0.0, 1.0);
+
     final center = Offset(size.width / 2, size.height / 2);
     final radius = (size.width - 20) / 2;
+
+    if (radius <= 0) return;
+
     const strokeWidth = 13.0;
 
     final bgPaint = Paint()
@@ -1162,39 +1173,37 @@ class _CircularProgressPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round;
+
     canvas.drawCircle(center, radius, bgPaint);
 
     final rect = Rect.fromCircle(center: center, radius: radius);
     const startAngle = -math.pi / 2;
-    final sweepAngle = 2 * math.pi * progress;
+    final sweepAngle = 2 * math.pi * safeProgress;
 
-    final gradient = SweepGradient(
-      startAngle: startAngle,
-      endAngle: startAngle + sweepAngle,
-      colors: [const Color(0xFFA3FF12).withOpacity(0.6), const Color(0xFFA3FF12)],
-    );
+    if (sweepAngle <= 0) return;
 
     final progressPaint = Paint()
-      ..shader = gradient.createShader(rect)
+      ..color = const Color(0xFFA3FF12)
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round;
+
     canvas.drawArc(rect, startAngle, sweepAngle, false, progressPaint);
 
     final glowPaint = Paint()
       ..color = const Color(0xFFA3FF12).withOpacity(0.25)
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth + 6
-      ..strokeCap = StrokeCap.round
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+      ..strokeCap = StrokeCap.round;
+
     canvas.drawArc(rect, startAngle, sweepAngle, false, glowPaint);
   }
 
   @override
-  bool shouldRepaint(covariant _CircularProgressPainter oldDelegate) =>
-      oldDelegate.progress != progress;
+  bool shouldRepaint(covariant _CircularProgressPainter oldDelegate) {
+    return oldDelegate.progress != progress;
+  }
 }
-
 // ── DASHED BORDER BUTTON ──────────────────────────────────────────────────────
 
 class DashedBorderButton extends StatelessWidget {

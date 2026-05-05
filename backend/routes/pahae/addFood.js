@@ -151,8 +151,9 @@ router.post("/log", async (req, res) => {
       "SELECT id FROM Days WHERE clientID = ? AND logDate = ?",
       [clientID, today]
     );
-
+    
     let dayID;
+
     if (days.length === 0) {
       const [clientRows] = await connection.query(
         "SELECT id FROM Clients WHERE id = ?",
@@ -163,14 +164,12 @@ router.post("/log", async (req, res) => {
         connection.release();
         return res.status(404).json({ success: false, message: "Client not found" });
       }
-      const [maxId] = await connection.query(
-        "SELECT COALESCE(MAX(id), 0) + 1 AS nextID FROM Days"
-      );
-      dayID = maxId[0].nextID;
       await connection.query(
-        "INSERT INTO Days (id, logDate, calories, clientID) VALUES (?, ?, 0, ?)",
-        [dayID, today, clientID]
+        "INSERT INTO Days (logDate, calories, clientID) VALUES (?, 0, ?)",
+        [today, clientID]
       );
+
+      dayID = insertResult.insertId;
     } else {
       dayID = days[0].id;
     }
@@ -296,14 +295,9 @@ router.post("/recipes", async (req, res) => {
       return res.status(404).json({ success: false, message: "Client not found" });
     }
 
-    const [maxId] = await connection.query(
-      "SELECT COALESCE(MAX(id),0)+1 AS nextID FROM Recipes"
-    );
-    const newRecipeID = maxId[0].nextID;
-
     await connection.query(
-      "INSERT INTO Recipes (id, name, image, calories, clientID) VALUES (?,?,?,?,?)",
-      [newRecipeID, name.trim(), image ?? "", Math.round(calories), clientID]
+      "INSERT INTO Recipes (name, image, calories, clientID) VALUES (?,?,?,?,?)",
+      [name.trim(), image ?? "", Math.round(calories), clientID]
     );
 
     const mealtimeKey = `recipe_${newRecipeID}`;

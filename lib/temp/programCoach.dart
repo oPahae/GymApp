@@ -8,6 +8,105 @@ import 'package:test_hh/models/dayProgram.dart';
 import 'package:test_hh/screens/foods.dart';       // → kAllFoods
 import 'package:test_hh/screens/bodyparts.dart';   // → kBodyParts
 
+final List<FoodModel> kAllFoods = [
+  const FoodModel(
+    id: '1',
+    name: 'Oatmeal',
+    imageUrl:
+        'https://images.pexels.com/photos/704971/pexels-photo-704971.jpeg?auto=compress&cs=tinysrgb&w=200',
+    calories: 389,
+    type: FoodType.solid,
+  ),
+  const FoodModel(
+    id: '2',
+    name: 'Almond Milk',
+    imageUrl:
+        'https://images.pexels.com/photos/3735218/pexels-photo-3735218.jpeg?auto=compress&cs=tinysrgb&w=200',
+    calories: 17,
+    type: FoodType.liquid,
+  ),
+  const FoodModel(
+    id: '3',
+    name: 'Chicken Breast',
+    imageUrl:
+        'https://images.pexels.com/photos/2338407/pexels-photo-2338407.jpeg?auto=compress&cs=tinysrgb&w=200',
+    calories: 165,
+    type: FoodType.solid,
+  ),
+  const FoodModel(
+    id: '4',
+    name: 'Whey Protein',
+    imageUrl:
+        'https://images.pexels.com/photos/4162493/pexels-photo-4162493.jpeg?auto=compress&cs=tinysrgb&w=200',
+    calories: 400,
+    type: FoodType.grains,
+  ),
+  const FoodModel(
+    id: '5',
+    name: 'Banana',
+    imageUrl:
+        'https://images.pexels.com/photos/1093038/pexels-photo-1093038.jpeg?auto=compress&cs=tinysrgb&w=200',
+    calories: 89,
+    type: FoodType.unit,
+  ),
+  const FoodModel(
+    id: '6',
+    name: 'Greek Yogurt',
+    imageUrl:
+        'https://images.pexels.com/photos/1132047/pexels-photo-1132047.jpeg?auto=compress&cs=tinysrgb&w=200',
+    calories: 59,
+    type: FoodType.solid,
+  ),
+  const FoodModel(
+    id: '7',
+    name: 'Orange Juice',
+    imageUrl:
+        'https://images.pexels.com/photos/158053/fresh-orange-juice-squeezed-158053.jpeg?auto=compress&cs=tinysrgb&w=200',
+    calories: 45,
+    type: FoodType.liquid,
+  ),
+  const FoodModel(
+    id: '8',
+    name: 'Quinoa',
+    imageUrl:
+        'https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=200',
+    calories: 120,
+    type: FoodType.solid,
+  ),
+  const FoodModel(
+    id: '9',
+    name: 'Salmon',
+    imageUrl:
+        'https://images.pexels.com/photos/3763847/pexels-photo-3763847.jpeg?auto=compress&cs=tinysrgb&w=200',
+    calories: 208,
+    type: FoodType.solid,
+  ),
+  const FoodModel(
+    id: '10',
+    name: 'Vitamin D3',
+    imageUrl:
+        'https://images.pexels.com/photos/4162493/pexels-photo-4162493.jpeg?auto=compress&cs=tinysrgb&w=200',
+    calories: 0,
+    type: FoodType.grains,
+  ),
+  const FoodModel(
+    id: '11',
+    name: 'Egg',
+    imageUrl:
+        'https://images.pexels.com/photos/824635/pexels-photo-824635.jpeg?auto=compress&cs=tinysrgb&w=200',
+    calories: 78,
+    type: FoodType.unit,
+  ),
+  const FoodModel(
+    id: '12',
+    name: 'Green Tea',
+    imageUrl:
+        'https://images.pexels.com/photos/1417945/pexels-photo-1417945.jpeg?auto=compress&cs=tinysrgb&w=200',
+    calories: 2,
+    type: FoodType.liquid,
+  ),
+];
+
 // ─── Meal type enum ───────────────────────────────────────────────────────────
 
 enum _Meal { breakfast, lunch, dinner }
@@ -15,16 +114,11 @@ enum _Meal { breakfast, lunch, dinner }
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 class ProgramCoachScreen extends StatefulWidget {
-  final String clientName;
-  final String clientId;
-  final String? clientAvatarUrl;
+  ProgramCoachScreen({ super.key });
 
-  const ProgramCoachScreen({
-    super.key,
-    required this.clientName,
-    required this.clientId,
-    this.clientAvatarUrl,
-  });
+  final String clientName = "";
+  final String clientId = "";
+  final String? clientAvatarUrl = "";
 
   @override
   State<ProgramCoachScreen> createState() => _ProgramCoachScreenState();
@@ -55,7 +149,7 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
       'dinner':    <FoodModel>[],
       'exercises': <ExerciceModel>[],
     });
-    _allFoods     = [];
+    _allFoods     = kAllFoods;
     _allExercises = [].expand<ExerciceModel>((bp) => bp.exercices).toList();
   }
 
