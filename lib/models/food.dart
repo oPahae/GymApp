@@ -15,6 +15,29 @@ class FoodModel {
     required this.type,
   });
 
+  factory FoodModel.fromJson(Map<String, dynamic> json) {
+    return FoodModel(
+      id: (json['_id'] ?? json['id'] ?? '').toString(),
+      name: json['name'] ?? '',
+      imageUrl: json['image'] ?? json['imageUrl'] ?? '', // ✅ FIX
+      calories: (json['calories'] ?? 0).toDouble(),
+      type: _parseType(json['type']),
+    );
+  }
+
+  static FoodType _parseType(String? type) {
+    switch (type) {
+      case 'liquid':
+        return FoodType.liquid;
+      case 'grains':
+        return FoodType.grains;
+      case 'unit':
+        return FoodType.unit;
+      default:
+        return FoodType.solid;
+    }
+  }
+
   String get calLabel {
     switch (type) {
       case FoodType.liquid:

@@ -1,0 +1,1 @@
+String kBaseUrl = 'http://localhost:5000';

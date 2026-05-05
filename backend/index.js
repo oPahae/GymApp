@@ -1,13 +1,17 @@
 import express from "express";
 import cors from "cors"
 
+import homeRoutes from './routes/pahae/home.js'
+import addFoodRoutes from './routes/pahae/addFood.js'
+import addRecipeRoutes from './routes/pahae/addRecipe.js'
+
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// routes, matalan :
-// import clientsRoute from './routes/pahae/clients' <- li fiha /getAll, /addClient...
-// app.use("/clients", clientsRoute) <- pash twli accessible f /clients/getAll, /clients/addClient...
+app.use('/api/pahae/home/', homeRoutes)
+app.use('/api/pahae/addFood/', addFoodRoutes)
+app.use('/api/pahae/addRecipe/', addRecipeRoutes)
 
 const port = 5000
 app.listen(port, () => {
