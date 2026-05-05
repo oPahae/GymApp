@@ -1,152 +1,109 @@
-USE gymappdb;
+-- Insertion des données dans toutes les tables
+INSERT INTO BodyParts (name, image) VALUES
+('Chest', 'chest.jpg'),
+('Back', 'back.jpg'),
+('Legs', 'legs.jpg'),
+('Shoulders', 'shoulders.jpg'),
+('Arms', 'arms.jpg');
 
--- ======================
--- INSERT INTO BodyParts
--- ======================
-INSERT INTO BodyParts (id, name, image) VALUES
-(1, 'Chest', 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=2070&auto=format&fit=crop'),
-(2, 'Back', 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=2120&auto=format&fit=crop'),
-(3, 'Legs', 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=2070&auto=format&fit=crop'),
-(4, 'Shoulders', 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=2070&auto=format&fit=crop'),
-(5, 'Arms', 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=2070&auto=format&fit=crop'),
-(6, 'Abs', 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=2070&auto=format&fit=crop');
+INSERT INTO Coaches (name, image, createdAt) VALUES
+('John Doe', 'john_doe.jpg', '2024-01-15'),
+('Jane Smith', 'jane_smith.jpg', '2024-02-20'),
+('Mike Johnson', 'mike_johnson.jpg', '2024-03-10');
 
--- ======================
--- INSERT INTO Coaches
--- ======================
-INSERT INTO Coaches (id, name, image, createdAt) VALUES
-(1, 'John Doe', 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=2070&auto=format&fit=crop', '2025-01-15'),
-(2, 'Jane Smith', 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=2120&auto=format&fit=crop', '2025-02-20'),
-(3, 'Mike Johnson', 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=2070&auto=format&fit=crop', '2025-03-10');
+INSERT INTO Clients (name, image, birth, gender, email, password, weight, height, frequency, goal, weightGoal, createdAt, coachID) VALUES
+('Alice Brown', 'alice_brown.jpg', '1990-05-10', 'Female', 'alice@example.com', 'password123', 65.5, 170, 3, 'Lose weight', 60.0, '2024-01-20', 1),
+('Bob Green', 'bob_green.jpg', '1985-08-15', 'Male', 'bob@example.com', 'password456', 80.0, 180, 4, 'Gain muscle', 85.0, '2024-02-01', 2),
+('Charlie Davis', 'charlie_davis.jpg', '1995-11-25', 'Male', 'charlie@example.com', 'password789', 70.0, 175, 2, 'Maintain', 70.0, '2024-03-05', 1);
 
--- ======================
--- INSERT INTO Clients
--- ======================
-INSERT INTO Clients (id, name, image, birth, weight, height, frequency, goal, weightGoal, createdAt, coachID) VALUES
-(1, 'Alice Brown', 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=2120&auto=format&fit=crop', '1990-05-15', 65.5, 165.0, 4, 'Lose weight', 60.0, '2025-04-01', 1),
-(2, 'Bob Green', 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=2070&auto=format&fit=crop', '1985-08-22', 80.0, 180.0, 5, 'Gain muscle', 85.0, '2025-04-05', 2),
-(3, 'Charlie Davis', 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=2120&auto=format&fit=crop', '1995-11-30', 70.0, 175.0, 3, 'Stay fit', 70.0, '2025-04-10', 3);
+INSERT INTO Exercises (name, image, muscle, video, description, bodyPartID) VALUES
+('Bench Press', 'bench_press.jpg', 'Pectorals', 'bench_press.mp4', 'Lie on a bench and press the barbell upwards.', 1),
+('Squats', 'squats.jpg', 'Quadriceps', 'squats.mp4', 'Stand with feet shoulder-width apart and lower your body.', 3),
+('Deadlift', 'deadlift.jpg', 'Hamstrings', 'deadlift.mp4', 'Bend at the hips and knees to lift the barbell.', 3),
+('Pull-Ups', 'pullups.jpg', 'Latissimus Dorsi', 'pullups.mp4', 'Hang from a bar and pull your body upwards.', 2),
+('Shoulder Press', 'shoulder_press.jpg', 'Deltoids', 'shoulder_press.mp4', 'Press the barbell overhead from shoulder height.', 4);
 
--- ======================
--- INSERT INTO Exercises
--- ======================
-INSERT INTO Exercises (id, name, image, muscle, video, description, bodyPartID) VALUES
-(1, 'Bench Press', 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=2070&auto=format&fit=crop', 'Pectorals', 'https://www.youtube.com/watch?v=EHBtFpYTQ1Q', 'Lie on a bench and press the barbell upwards.', 1),
-(2, 'Pull Ups', 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=2120&auto=format&fit=crop', 'Latissimus Dorsi', 'https://www.youtube.com/watch?v=8B9V5IyXxJY', 'Hang from a bar and pull your body up.', 2),
-(3, 'Squats', 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=2070&auto=format&fit=crop', 'Quadriceps', 'https://www.youtube.com/watch?v=U3HlXQM7GQE', 'Stand with feet shoulder-width apart and lower your body.', 3),
-(4, 'Shoulder Press', 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=2070&auto=format&fit=crop', 'Deltoids', 'https://www.youtube.com/watch?v=zQOaXsXgE1I', 'Press the barbell from shoulder height to overhead.', 4),
-(5, 'Bicep Curls', 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=2070&auto=format&fit=crop', 'Biceps', 'https://www.youtube.com/watch?v=ykJmrZ5v0Oo', 'Curl the dumbbell from arm\'s length to shoulder.', 5),
-(6, 'Plank', 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=2070&auto=format&fit=crop', 'Abdominals', 'https://www.youtube.com/watch?v=pSHjTRCQxIw', 'Hold a push-up position with body in a straight line.', 6);
+INSERT INTO Notes (text, exerciseID) VALUES
+('Focus on form, not weight.', 1),
+('Keep your back straight.', 2),
+('Engage your core.', 3),
+('Use a wide grip for better results.', 4),
+('Control the movement.', 5);
 
--- ======================
--- INSERT INTO Notes
--- ======================
-INSERT INTO Notes (id, text, exerciseID) VALUES
-(1, 'Keep your back straight and core engaged.', 1),
-(2, 'Use a wide grip for better lat activation.', 2),
-(3, 'Go as low as possible for maximum effect.', 3),
-(4, 'Do not lock your elbows at the top.', 4),
-(5, 'Control the movement, do not swing.', 5),
-(6, 'Hold for at least 30 seconds for best results.', 6);
+INSERT INTO Workouts (weekDay, exerciseID, clientID) VALUES
+('Monday', 1, 1),
+('Monday', 2, 1),
+('Tuesday', 3, 2),
+('Tuesday', 4, 2),
+('Wednesday', 5, 3),
+('Wednesday', 1, 3);
 
--- ======================
--- INSERT INTO Workouts
--- ======================
-INSERT INTO Workouts (id, weekDay, exerciseID, clientID) VALUES
-(1, 'Monday', 1, 1),
-(2, 'Monday', 3, 1),
-(3, 'Tuesday', 2, 1),
-(4, 'Wednesday', 4, 2),
-(5, 'Wednesday', 5, 2),
-(6, 'Thursday', 6, 2),
-(7, 'Friday', 1, 3),
-(8, 'Friday', 6, 3);
-
--- ======================
--- INSERT INTO Invites
--- ======================
 INSERT INTO Invites (coachID, clientID) VALUES
 (1, 1),
 (2, 2),
-(3, 3);
+(1, 3);
 
--- ======================
--- INSERT INTO Ingredients
--- ======================
-INSERT INTO Ingredients (id, name, image, calories, type) VALUES
-(1, 'Chicken Breast', 'https://images.unsplash.com/photo-1594736797933-d0401ba2fe65?q=80&w=2071&auto=format&fit=crop', 165, 'Protein'),
-(2, 'Brown Rice', 'https://images.unsplash.com/photo-1586201375761-83867e78571f?q=80&w=2070&auto=format&fit=crop', 110, 'Carbohydrate'),
-(3, 'Broccoli', 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?q=80&w=1974&auto=format&fit=crop', 34, 'Vegetable'),
-(4, 'Salmon', 'https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?q=80&w=2070&auto=format&fit=crop', 206, 'Protein'),
-(5, 'Eggs', 'https://images.unsplash.com/photo-1582722872445-44dc5f7e3c8f?q=80&w=1974&auto=format&fit=crop', 70, 'Protein'),
-(6, 'Oats', 'https://images.unsplash.com/photo-1586201375761-83867e78571f?q=80&w=2070&auto=format&fit=crop', 68, 'Carbohydrate');
+INSERT INTO Ingredients (name, image, calories, type) VALUES
+('Chicken Breast', 'chicken_breast.jpg', 165, 'Protein'),
+('Rice', 'rice.jpg', 130, 'Carbohydrate'),
+('Broccoli', 'broccoli.jpg', 55, 'Vegetable'),
+('Almonds', 'almonds.jpg', 164, 'Fat'),
+('Eggs', 'eggs.jpg', 70, 'Protein');
 
--- ======================
--- INSERT INTO Recipes
--- ======================
-INSERT INTO Recipes (id, name, image, calories, clientID) VALUES
-(1, 'Chicken and Rice', 'https://images.unsplash.com/photo-1594736797933-d0401ba2fe65?q=80&w=2071&auto=format&fit=crop', 400, 1),
-(2, 'Salmon and Broccoli', 'https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?q=80&w=2070&auto=format&fit=crop', 450, 2),
-(3, 'Omelette with Oats', 'https://images.unsplash.com/photo-1582722872445-44dc5f7e3c8f?q=80&w=1974&auto=format&fit=crop', 300, 3);
+INSERT INTO Recipes (name, image, calories, clientID) VALUES
+('Grilled Chicken Salad', 'grilled_chicken_salad.jpg', 350, 1),
+('Beef Stir-Fry', 'beef_stir_fry.jpg', 450, 2),
+('Vegetable Soup', 'vegetable_soup.jpg', 200, 3);
 
--- ======================
--- INSERT INTO NutritionIngredients
--- ======================
-INSERT INTO NutritionIngredients (ingredientID, clientID, mealtime, quantity) VALUES
-(1, 1, 'Breakfast', 150),
-(2, 1, 'Lunch', 200),
-(3, 1, 'Dinner', 100),
-(4, 2, 'Lunch', 150),
-(5, 2, 'Breakfast', 100),
-(6, 3, 'Breakfast', 50);
+INSERT INTO NutritionIngredients (ingredientID, clientID, mealtime, weekDay, quantity) VALUES
+(1, 1, 'Lunch', 'Monday', 200),
+(2, 1, 'Lunch', 'Monday', 150),
+(3, 2, 'Dinner', 'Tuesday', 100),
+(4, 3, 'Breakfast', 'Wednesday', 50),
+(5, 1, 'Breakfast', 'Monday', 100);
 
--- ======================
--- INSERT INTO NutritionRecipes
--- ======================
-INSERT INTO NutritionRecipes (recipeID, clientID, mealtime, quantity) VALUES
-(1, 1, 'Lunch', 1),
-(2, 2, 'Dinner', 1),
-(3, 3, 'Breakfast', 1);
+INSERT INTO NutritionRecipes (recipeID, clientID, mealtime, weekDay, quantity) VALUES
+(1, 1, 'Lunch', 'Monday', 1),
+(2, 2, 'Dinner', 'Tuesday', 1),
+(3, 3, 'Lunch', 'Wednesday', 1);
 
--- ======================
--- INSERT INTO Days
--- ======================
-INSERT INTO Days (id, logDate, calories, clientID) VALUES
-(1, '2026-05-01', 2000, 1),
-(2, '2026-05-02', 2200, 2),
-(3, '2026-05-03', 1800, 3);
+INSERT INTO Days (logDate, calories, clientID) VALUES
+('2024-05-01', 2000, 1),
+('2024-05-02', 2200, 2),
+('2024-05-03', 1800, 3);
 
--- ======================
--- INSERT INTO Activities
--- ======================
-INSERT INTO Activities (id, name, calories, dayID) VALUES
-(1, 'Running', 300, 1),
-(2, 'Swimming', 400, 2),
-(3, 'Cycling', 250, 3);
+INSERT INTO Activities (name, calories, dayID) VALUES
+('Running', 300, 1),
+('Swimming', 400, 2),
+('Cycling', 250, 3);
 
--- ======================
--- INSERT INTO IngredientsDay
--- ======================
 INSERT INTO IngredientsDay (ingredientID, dayID, mealtime, quantity) VALUES
-(1, 1, 'Breakfast', 150),
-(2, 1, 'Lunch', 200),
-(3, 2, 'Dinner', 100),
-(4, 2, 'Lunch', 150),
-(5, 3, 'Breakfast', 100);
+(1, 1, 'Lunch', 200),
+(2, 1, 'Dinner', 150),
+(3, 2, 'Breakfast', 100),
+(4, 3, 'Snack', 50),
+(5, 1, 'Breakfast', 100);
 
--- ======================
--- INSERT INTO RecipesDay
--- ======================
 INSERT INTO RecipesDay (recipeID, dayID, mealtime, quantity) VALUES
 (1, 1, 'Lunch', 1),
 (2, 2, 'Dinner', 1),
-(3, 3, 'Breakfast', 1);
+(3, 3, 'Lunch', 1);
 
--- ======================
--- INSERT INTO Messages
--- ======================
-INSERT INTO Messages (id, text, time, isUser, coachID, clientID) VALUES
-(1, 'Hi, how is my workout plan?', '2026-05-01 09:00:00', TRUE, 1, 1),
-(2, 'Your plan is ready, check it out!', '2026-05-01 09:05:00', FALSE, 1, 1),
-(3, 'Can I change my goal?', '2026-05-02 10:00:00', TRUE, 2, 2),
-(4, 'Sure, let’s discuss it.', '2026-05-02 10:10:00', FALSE, 2, 2);
+INSERT INTO Messages (text, time, isUser, coachID, clientID) VALUES
+('Hi, how are you?', '2024-05-01 10:00:00', FALSE, 1, 1),
+('I am good, thanks!', '2024-05-01 10:05:00', TRUE, NULL, 1),
+('Let me know if you need help.', '2024-05-01 10:10:00', FALSE, 1, 1),
+('Can we schedule a session?', '2024-05-02 14:00:00', TRUE, NULL, 2),
+('Sure, tomorrow at 3 PM?', '2024-05-02 14:05:00', FALSE, 2, 2);
+
+INSERT INTO CoachPrograms (text, updatedAt, clientID, coachID) VALUES
+('Focus on upper body this week.', '2024-05-01 09:00:00', 1, 1),
+('Leg day on Wednesday.', '2024-05-02 11:00:00', 2, 2),
+('Cardio and core exercises.', '2024-05-03 13:00:00', 3, 1);
+
+INSERT INTO WeightHistory (weight, logDate, clientID) VALUES
+(65.5, '2024-05-01', 1),
+(80.0, '2024-05-02', 2),
+(70.0, '2024-05-03', 3),
+(64.0, '2024-05-04', 1),
+(79.5, '2024-05-05', 2);

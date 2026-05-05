@@ -73,10 +73,9 @@ router.post("/save", async (req, res) => {
     await connection.beginTransaction();
 
     // 1. Insert the recipe row
-    const recipeId = Date.now(); // simple numeric ID; replace with AUTO_INCREMENT if schema allows
     await connection.query(
-      "INSERT INTO Recipes (id, name, image, calories, clientID) VALUES (?, ?, ?, ?, ?)",
-      [recipeId, name.trim(), image, Math.round(calories ?? 0), clientID]
+      "INSERT INTO Recipes (name, image, calories, clientID) VALUES (?, ?, ?, ?)",
+      [name.trim(), image, Math.round(calories ?? 0), clientID]
     );
 
     // 2. Link each ingredient via NutritionIngredients
@@ -94,7 +93,7 @@ router.post("/save", async (req, res) => {
     }
 
     await connection.commit();
-    res.status(201).json({ success: true, data: { recipeID: recipeId } });
+    res.status(201).json({ success: true });
   } catch (error) {
     await connection.rollback();
     console.error("POST /save error:", error.message);

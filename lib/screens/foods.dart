@@ -3,145 +3,11 @@ import 'package:test_hh/components/header.dart';
 import 'package:test_hh/components/navbar.dart';
 import 'package:test_hh/screens/addRecipe.dart';
 import 'package:test_hh/constants/colors.dart';
+import 'package:test_hh/constants/urls.dart';
 import 'package:test_hh/models/food.dart';
 import 'package:test_hh/models/recipe.dart';
-
-// ─── Mock Data ─────────────────────────────────────────────────────────────────
-
-final List<FoodModel> kAllFoods = [
-  const FoodModel(
-    id: '1',
-    name: 'Oatmeal',
-    imageUrl:
-        'https://images.pexels.com/photos/704971/pexels-photo-704971.jpeg?auto=compress&cs=tinysrgb&w=200',
-    calories: 389,
-    type: FoodType.solid,
-  ),
-  const FoodModel(
-    id: '2',
-    name: 'Almond Milk',
-    imageUrl:
-        'https://images.pexels.com/photos/3735218/pexels-photo-3735218.jpeg?auto=compress&cs=tinysrgb&w=200',
-    calories: 17,
-    type: FoodType.liquid,
-  ),
-  const FoodModel(
-    id: '3',
-    name: 'Chicken Breast',
-    imageUrl:
-        'https://images.pexels.com/photos/2338407/pexels-photo-2338407.jpeg?auto=compress&cs=tinysrgb&w=200',
-    calories: 165,
-    type: FoodType.solid,
-  ),
-  const FoodModel(
-    id: '4',
-    name: 'Whey Protein',
-    imageUrl:
-        'https://images.pexels.com/photos/4162493/pexels-photo-4162493.jpeg?auto=compress&cs=tinysrgb&w=200',
-    calories: 400,
-    type: FoodType.grains,
-  ),
-  const FoodModel(
-    id: '5',
-    name: 'Banana',
-    imageUrl:
-        'https://images.pexels.com/photos/1093038/pexels-photo-1093038.jpeg?auto=compress&cs=tinysrgb&w=200',
-    calories: 89,
-    type: FoodType.unit,
-  ),
-  const FoodModel(
-    id: '6',
-    name: 'Greek Yogurt',
-    imageUrl:
-        'https://images.pexels.com/photos/1132047/pexels-photo-1132047.jpeg?auto=compress&cs=tinysrgb&w=200',
-    calories: 59,
-    type: FoodType.solid,
-  ),
-  const FoodModel(
-    id: '7',
-    name: 'Orange Juice',
-    imageUrl:
-        'https://images.pexels.com/photos/158053/fresh-orange-juice-squeezed-158053.jpeg?auto=compress&cs=tinysrgb&w=200',
-    calories: 45,
-    type: FoodType.liquid,
-  ),
-  const FoodModel(
-    id: '8',
-    name: 'Quinoa',
-    imageUrl:
-        'https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=200',
-    calories: 120,
-    type: FoodType.solid,
-  ),
-  const FoodModel(
-    id: '9',
-    name: 'Salmon',
-    imageUrl:
-        'https://images.pexels.com/photos/3763847/pexels-photo-3763847.jpeg?auto=compress&cs=tinysrgb&w=200',
-    calories: 208,
-    type: FoodType.solid,
-  ),
-  const FoodModel(
-    id: '10',
-    name: 'Vitamin D3',
-    imageUrl:
-        'https://images.pexels.com/photos/4162493/pexels-photo-4162493.jpeg?auto=compress&cs=tinysrgb&w=200',
-    calories: 0,
-    type: FoodType.grains,
-  ),
-  const FoodModel(
-    id: '11',
-    name: 'Egg',
-    imageUrl:
-        'https://images.pexels.com/photos/824635/pexels-photo-824635.jpeg?auto=compress&cs=tinysrgb&w=200',
-    calories: 78,
-    type: FoodType.unit,
-  ),
-  const FoodModel(
-    id: '12',
-    name: 'Green Tea',
-    imageUrl:
-        'https://images.pexels.com/photos/1417945/pexels-photo-1417945.jpeg?auto=compress&cs=tinysrgb&w=200',
-    calories: 2,
-    type: FoodType.liquid,
-  ),
-];
-
-final List<FoodModel> kRecentFoods = [
-  kAllFoods[0],
-  kAllFoods[2],
-  kAllFoods[4],
-  kAllFoods[8],
-  kAllFoods[5],
-  kAllFoods[10],
-];
-
-List<RecipeModel> buildRecipes() => [
-      RecipeModel(
-        id: 'r1',
-        name: 'Power Breakfast Bowl',
-        imageUrl:
-            'https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=800',
-        calories: 620,
-        ingredients: [kAllFoods[0], kAllFoods[4], kAllFoods[5]],
-      ),
-      RecipeModel(
-        id: 'r2',
-        name: 'Post-Workout Shake',
-        imageUrl:
-            'https://images.pexels.com/photos/3735218/pexels-photo-3735218.jpeg?auto=compress&cs=tinysrgb&w=800',
-        calories: 480,
-        ingredients: [kAllFoods[3], kAllFoods[1], kAllFoods[4]],
-      ),
-      RecipeModel(
-        id: 'r3',
-        name: 'Salmon Quinoa Bowl',
-        imageUrl:
-            'https://images.pexels.com/photos/3763847/pexels-photo-3763847.jpeg?auto=compress&cs=tinysrgb&w=800',
-        calories: 550,
-        ingredients: [kAllFoods[8], kAllFoods[7], kAllFoods[2]],
-      ),
-    ];
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 // ─── Screen ────────────────────────────────────────────────────────────────────
 
@@ -161,16 +27,26 @@ class _FoodsScreenState extends State<FoodsScreen>
   // Cart: id -> quantity
   final Map<String, int> _cart = {};
 
-  // Recipes (mutable for expand/collapse)
-  late final List<RecipeModel> _recipes;
+  // Data from API
+  List<FoodModel> _allFoods = [];
+  List<FoodModel> _recentFoods = [];
+  List<RecipeModel> _recipes = [];
+  bool _isLoadingFoods = true;
+  bool _isLoadingRecipes = true;
+  bool _hasErrorFoods = false;
+  bool _hasErrorRecipes = false;
+
+  // Mock clientID (à remplacer par la valeur réelle plus tard)
+  final int kClientID = 1;
 
   int get _cartTotal => _cart.values.fold(0, (a, b) => a + b);
 
   @override
   void initState() {
     super.initState();
-    _recipes = buildRecipes();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
+    _fetchFoods();
+    _fetchRecipes();
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) return;
       setState(() {
@@ -190,19 +66,86 @@ class _FoodsScreenState extends State<FoodsScreen>
     super.dispose();
   }
 
+  // ─── API Calls ───────────────────────────────────────────────────────────────
+
+  Future<void> _fetchFoods() async {
+    setState(() {
+      _isLoadingFoods = true;
+      _hasErrorFoods = false;
+    });
+    try {
+      final response = await http.get(
+        Uri.parse('$kBaseUrl/api/pahae/addFood/ingredients'),
+      );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          final List<dynamic> foodsData = data['data'];
+          setState(() {
+            _allFoods = foodsData
+                .map((food) => FoodModel.fromJson(food))
+                .toList();
+            _recentFoods = _allFoods.take(6).toList(); // Mock recent foods (à adapter si l'API retourne les "recents")
+          });
+        } else {
+          setState(() => _hasErrorFoods = true);
+        }
+      } else {
+        setState(() => _hasErrorFoods = true);
+      }
+    } catch (e) {
+      setState(() => _hasErrorFoods = true);
+    } finally {
+      setState(() => _isLoadingFoods = false);
+    }
+  }
+
+  Future<void> _fetchRecipes() async {
+    setState(() {
+      _isLoadingRecipes = true;
+      _hasErrorRecipes = false;
+    });
+    try {
+      final response = await http.get(
+        Uri.parse('$kBaseUrl/api/pahae/addFood/recipes/$kClientID'),
+      );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          final List<dynamic> recipesData = data['data'];
+          setState(() {
+            _recipes = recipesData
+                .map((recipe) => RecipeModel.fromJson(recipe))
+                .toList();
+          });
+        } else {
+          setState(() => _hasErrorRecipes = true);
+        }
+      } else {
+        setState(() => _hasErrorRecipes = true);
+      }
+    } catch (e) {
+      setState(() => _hasErrorRecipes = true);
+    } finally {
+      setState(() => _isLoadingRecipes = false);
+    }
+  }
+
+  // ─── Filtered Lists ─────────────────────────────────────────────────────────
+
   List<FoodModel> get _filteredFoods =>
-      kAllFoods.where((f) => f.name.toLowerCase().contains(_searchQuery)).toList();
+      _allFoods.where((f) => f.name.toLowerCase().contains(_searchQuery)).toList();
 
   List<RecipeModel> get _filteredRecipes =>
       _recipes.where((r) => r.name.toLowerCase().contains(_searchQuery)).toList();
+
+  // ─── Build Methods ───────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kDarkBg,
-
-      appBar: Header(),
-
+      appBar: const Header(),
       body: SafeArea(
         child: Column(
           children: [
@@ -213,23 +156,28 @@ class _FoodsScreenState extends State<FoodsScreen>
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildFoodList(),
-                  _buildRecipeList(),
+                  _isLoadingFoods
+                      ? _buildLoading()
+                      : _hasErrorFoods
+                          ? _buildError("Failed to load foods")
+                          : _buildFoodList(),
+                  _isLoadingRecipes
+                      ? _buildLoading()
+                      : _hasErrorRecipes
+                          ? _buildError("Failed to load recipes")
+                          : _buildRecipeList(),
                 ],
               ),
             ),
           ],
         ),
       ),
-      
       floatingActionButton: _cartTotal > 0 ? _buildCartFAB() : null,
-
-      bottomNavigationBar: NavBar(),
+      bottomNavigationBar: const NavBar(),
     );
   }
 
   // ─── TOP BAR ────────────────────────────────────────────────────────────────
-
   Widget _buildTopBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
@@ -237,9 +185,7 @@ class _FoodsScreenState extends State<FoodsScreen>
         children: [
           GestureDetector(
             onTap: () => {
-              if (Navigator.canPop(context)) {
-                Navigator.pop(context)
-              }
+              if (Navigator.canPop(context)) {Navigator.pop(context)}
             },
             child: Container(
               width: 38,
@@ -271,8 +217,7 @@ class _FoodsScreenState extends State<FoodsScreen>
             child: _cartTotal > 0
                 ? Container(
                     key: const ValueKey('badge'),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: kNeonGreen,
                       borderRadius: BorderRadius.circular(20),
@@ -301,7 +246,6 @@ class _FoodsScreenState extends State<FoodsScreen>
   }
 
   // ─── SEARCH BAR ─────────────────────────────────────────────────────────────
-
   Widget _buildSearchBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
@@ -336,7 +280,6 @@ class _FoodsScreenState extends State<FoodsScreen>
   }
 
   // ─── TAB BAR ────────────────────────────────────────────────────────────────
-
   Widget _buildTabBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
@@ -375,8 +318,7 @@ class _FoodsScreenState extends State<FoodsScreen>
     );
   }
 
-  // ─── FOODS TAB ──────────────────────────────────────────────────────────────
-
+  // ─── FOODS TAB ────────────────────────────────────────────────────────────
   Widget _buildFoodList() {
     final foods = _filteredFoods;
     if (foods.isEmpty) return _buildEmpty();
@@ -390,8 +332,7 @@ class _FoodsScreenState extends State<FoodsScreen>
     );
   }
 
-  // ─── RECIPES TAB ────────────────────────────────────────────────────────────
-
+  // ─── RECIPES TAB ───────────────────────────────────────────────────────────
   Widget _buildRecipeList() {
     final recipes = _filteredRecipes;
     return ListView(
@@ -400,7 +341,10 @@ class _FoodsScreenState extends State<FoodsScreen>
         // Add Recipe CTA
         GestureDetector(
           onTap: () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const AddRecipeScreen()));
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AddRecipeScreen()),
+            );
           },
           child: Container(
             margin: const EdgeInsets.only(bottom: 14),
@@ -441,85 +385,90 @@ class _FoodsScreenState extends State<FoodsScreen>
   }
 
   // ─── Food Card ───────────────────────────────────────────────────────────────
-
   Widget _buildFoodCard(FoodModel food) {
-    return Container(
-      decoration: BoxDecoration(
-        color: kDarkCard,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      clipBehavior: Clip.hardEdge,
-      child: Row(
-        children: [
-          // Thumbnail with right-gradient fade
-          SizedBox(
-            width: 80,
-            height: 80,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Image.network(
-                  food.imageUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    color: const Color(0xFF1A1A1A),
-                    child: const Icon(Icons.fastfood,
-                        color: Colors.white24, size: 24),
-                  ),
-                ),
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [
-                        Colors.transparent,
-                        kDarkCard.withOpacity(0.65),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Info
-          Expanded(
-            child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _cart[food.id] = (_cart[food.id] ?? 0) + 1;
+        });
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: kDarkCard,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        clipBehavior: Clip.hardEdge,
+        child: Row(
+          children: [
+            // Thumbnail with right-gradient fade
+            SizedBox(
+              width: 80,
+              height: 80,
+              child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  _buildTypeChip(food.typeLabel),
-                  const SizedBox(height: 5),
-                  Text(
-                    food.name,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
+                  Image.network(
+                    food.imageUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      color: const Color(0xFF1A1A1A),
+                      child: const Icon(Icons.fastfood,
+                          color: Colors.white24, size: 24),
                     ),
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    food.calLabel,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.4),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: [
+                          Colors.transparent,
+                          kDarkCard.withOpacity(0.65),
+                        ],
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-        ],
+            // Info
+            Expanded(
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildTypeChip(food.typeLabel),
+                    const SizedBox(height: 5),
+                    Text(
+                      food.name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      food.calLabel,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.4),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   // ─── Recipe Card ─────────────────────────────────────────────────────────────
-
   Widget _buildRecipeCard(RecipeModel recipe) {
     return Container(
       decoration: BoxDecoration(
@@ -700,8 +649,7 @@ class _FoodsScreenState extends State<FoodsScreen>
     );
   }
 
-  // ─── Shared Widgets ──────────────────────────────────────────────────────────
-
+  // ─── Shared Widgets ────────────────────────────────────────────────────────
   Widget _buildTypeChip(String label) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
@@ -738,6 +686,56 @@ class _FoodsScreenState extends State<FoodsScreen>
                 color: Colors.white.withOpacity(0.28),
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoading() {
+    return const Center(
+      child: CircularProgressIndicator(color: kNeonGreen),
+    );
+  }
+
+  Widget _buildError(String message) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 80),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline,
+                color: Colors.red.withOpacity(0.5), size: 52),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              style: TextStyle(
+                color: Colors.red.withOpacity(0.7),
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                if (_tabController.index == 0) {
+                  _fetchFoods();
+                } else {
+                  _fetchRecipes();
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kNeonGreen,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Retry',
+                style: TextStyle(color: Colors.black),
               ),
             ),
           ],
