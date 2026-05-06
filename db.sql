@@ -18,9 +18,14 @@ CREATE TABLE Coaches (
     id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(255),
     image VARCHAR(255),
-    createdAt DATE
+    createdAt DATE,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    specialty VARCHAR(255) NULL,
+    bio TEXT NULL,
+    resetToken VARCHAR(255) NULL,
+    resetTokenExpiry DATETIME NULL
 );
-
 -- ======================
 -- TABLE: Clients
 -- ======================
@@ -39,6 +44,8 @@ CREATE TABLE Clients (
     weightGoal DOUBLE,
     createdAt DATE,
     coachID INT,
+    resetToken VARCHAR(255) NULL,
+    resetTokenExpiry DATETIME NULL,
     FOREIGN KEY (coachID) REFERENCES Coaches(id)
 );
 
@@ -219,3 +226,4 @@ CREATE TABLE WeightHistory (
     FOREIGN KEY (clientID) REFERENCES Clients(id),
     UNIQUE KEY unique_day (clientID, logDate)
 );
+

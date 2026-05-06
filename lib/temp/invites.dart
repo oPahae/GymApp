@@ -46,7 +46,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
           final List<dynamic> invitesData = data['data'];
           setState(() {
             _invites = invitesData
-                .map((client) => Client.fromJson2(client))
+                .map((client) => Client.fromJson(client))
                 .toList();
           });
         } else {
