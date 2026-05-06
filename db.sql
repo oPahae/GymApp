@@ -196,17 +196,38 @@ CREATE TABLE RecipesDay (
 );
 
 -- ======================
--- TABLE: Messages
+-- TABLE: Messages (mise à jour)
 -- ======================
 CREATE TABLE Messages (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    text VARCHAR(255),
-    time DATETIME,
-    isUser BOOLEAN,
-    coachID INT,
-    clientID INT,
-    FOREIGN KEY (coachID) REFERENCES Coaches(id),
-    FOREIGN KEY (clientID) REFERENCES Clients(id)
+    id       INT PRIMARY KEY AUTO_INCREMENT,
+    text     TEXT,
+    time     DATETIME     NOT NULL DEFAULT NOW(),
+    isUser   BOOLEAN      NOT NULL,                         -- 1 = envoyé par le client, 0 = envoyé par le coach
+    type     ENUM('text','image','audio','video') NOT NULL DEFAULT 'text',
+    status   ENUM('sending','sent','delivered','read')      NOT NULL DEFAULT 'sent',
+    mediaUrl VARCHAR(512) NULL,
+    coachID  INT          NOT NULL,
+    clientID INT          NOT NULL,
+    FOREIGN KEY (coachID)  REFERENCES Coaches(id) ON DELETE CASCADE,
+    FOREIGN KEY (clientID) REFERENCES Clients(id) ON DELETE CASCADE,
+    INDEX idx_conversation (coachID, clientID, time)        -- optimise les requêtes de conversation
+);
+
+-- ======================
+-- TABLE: Calls
+-- ======================
+CREATE TABLE Calls (
+    id        INT PRIMARY KEY AUTO_INCREMENT,
+    coachID   INT          NOT NULL,
+    clientID  INT          NOT NULL,
+    callType  ENUM('voice','video') NOT NULL,
+    status    ENUM('initiated','accepted','rejected','ended','missed') NOT NULL DEFAULT 'initiated',
+    startedAt DATETIME     NOT NULL DEFAULT NOW(),
+    endedAt   DATETIME     NULL,
+    duration  INT          NULL,                            -- durée en secondes
+    FOREIGN KEY (coachID)  REFERENCES Coaches(id) ON DELETE CASCADE,
+    FOREIGN KEY (clientID) REFERENCES Clients(id) ON DELETE CASCADE,
+    INDEX idx_call_conv (coachID, clientID, startedAt)
 );
 -- Programme coach
 CREATE TABLE CoachPrograms (

@@ -127,7 +127,7 @@ class _ProfileCoachState extends State<ProfileCoach> {
       await _saveCoach();
     }
     setState(() => _isEditing = !_isEditing);
-  }
+  } 
 
   void _openClientProfile(Client client) {
     Navigator.push(
@@ -288,7 +288,7 @@ class _ProfileCoachState extends State<ProfileCoach> {
             Icon(Icons.logout, color: Colors.redAccent, size: 20),
             SizedBox(width: 8),
             Text(
-              'SE DÉCONNECTER',
+              'LOGOUT',
               style: TextStyle(
                 color: Colors.redAccent,
                 fontSize: 14,
