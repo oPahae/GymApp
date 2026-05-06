@@ -21,21 +21,7 @@ class Header extends StatelessWidget implements PreferredSizeWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Row(
-              children: [
-                _buildChatButton(),
-                const SizedBox(width: 14),
-                const Text(
-                  '9:41',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ],
-            ),
+            _buildChatButton(),
             RichText(
               text: TextSpan(
                 children: [

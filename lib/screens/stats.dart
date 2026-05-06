@@ -1,9 +1,13 @@
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:test_hh/components/header.dart';
 import 'package:test_hh/components/navbar.dart';
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/models/client.dart';
+
+const String _kBase = 'http://192.168.0.232:5000/api';
 
 // ─── Model ────────────────────────────────────────────────────────────────────
 
@@ -27,18 +31,21 @@ class _StatScreenState extends State<StatScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _barCtrl;
   late Animation<double> _barAnim;
-  late List<WeightEntry> _history;
+
+  // ── State de l'historique ─────────────────────────────────────────────────
+  List<WeightEntry> _history = [];
+  bool _loadingHistory = true;
+  String? _historyError;
 
   @override
   void initState() {
     super.initState();
-    _history = _buildHistory();
     _barCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     );
     _barAnim = CurvedAnimation(parent: _barCtrl, curve: Curves.easeOutCubic);
-    Future.delayed(const Duration(milliseconds: 300), _barCtrl.forward);
+    _fetchWeightHistory();
   }
 
   @override
@@ -47,30 +54,54 @@ class _StatScreenState extends State<StatScreen>
     super.dispose();
   }
 
-  // ── Fake monthly history — replace with real data ─────────────────────────
-  List<WeightEntry> _buildHistory() {
-    final rng = Random(widget.client.id);
-    final entries = <WeightEntry>[];
-    double w = widget.client.weight + rng.nextDouble() * 6 + 1;
-    var cursor = DateTime(
-        widget.client.createdAt.year, widget.client.createdAt.month, 1);
-    final limit =
-        DateTime(DateTime.now().year, DateTime.now().month, 1);
-    while (!cursor.isAfter(limit)) {
-      entries.add(WeightEntry(
-          date: cursor, weight: double.parse(w.toStringAsFixed(1))));
-      w += (widget.client.weightGoal - w) * 0.13 +
-          (rng.nextDouble() * 1.4 - 0.7);
-      cursor = DateTime(cursor.year, cursor.month + 1, 1);
+  // ── API ───────────────────────────────────────────────────────────────────
+
+  Future<void> _fetchWeightHistory() async {
+    setState(() { _loadingHistory = true; _historyError = null; });
+    try {
+      final uri = Uri.parse(
+          '$_kBase/stat/${widget.client.id}/weight-history');
+      final response =
+          await http.get(uri).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) {
+        throw Exception('Erreur ${response.statusCode}');
+      }
+
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      if (body['success'] != true) throw Exception(body['message']);
+
+      final list = body['data'] as List<dynamic>;
+      final entries = list.map((e) {
+        final map = e as Map<String, dynamic>;
+        return WeightEntry(
+          date:   DateTime.parse(map['date'] as String),
+          weight: (map['weight'] as num).toDouble(),
+        );
+      }).toList();
+
+      setState(() {
+        _history = entries;
+        _loadingHistory = false;
+      });
+
+      // Lance l'animation de la barre de progression une fois les données prêtes
+      Future.delayed(
+        const Duration(milliseconds: 300),
+        _barCtrl.forward,
+      );
+    } catch (e) {
+      setState(() {
+        _historyError = e.toString();
+        _loadingHistory = false;
+      });
+      // Lance quand même l'animation avec ratio 0
+      Future.delayed(const Duration(milliseconds: 300), _barCtrl.forward);
     }
-    if (entries.isNotEmpty) {
-      entries[entries.length - 1] =
-          WeightEntry(date: entries.last.date, weight: widget.client.weight);
-    }
-    return entries;
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
+
   double get _start =>
       _history.isNotEmpty ? _history.first.weight : widget.client.weight;
   double get _current => widget.client.weight;
@@ -91,15 +122,15 @@ class _StatScreenState extends State<StatScreen>
 
   String get _bmiLabel {
     if (_bmi < 18.5) return 'INSUFFISANT';
-    if (_bmi < 25) return 'NORMAL';
-    if (_bmi < 30) return 'SURPOIDS';
+    if (_bmi < 25)   return 'NORMAL';
+    if (_bmi < 30)   return 'SURPOIDS';
     return 'OBÉSITÉ';
   }
 
   Color get _bmiColor {
     if (_bmi < 18.5) return const Color(0xFF5BC4F5);
-    if (_bmi < 25) return kNeonGreen;
-    if (_bmi < 30) return const Color(0xFFFFA940);
+    if (_bmi < 25)   return kNeonGreen;
+    if (_bmi < 30)   return const Color(0xFFFFA940);
     return const Color(0xFFFF6B6B);
   }
 
@@ -115,10 +146,10 @@ class _StatScreenState extends State<StatScreen>
   String get _eta {
     if (_history.length < 2) return '—';
     if (_remaining < 0.5) return 'Atteint !';
-    final months = _history.length - 1;
+    final months     = _history.length - 1;
     final totalDelta = _history.last.weight - _history.first.weight;
     if (months == 0 || totalDelta.abs() < 0.1) return '—';
-    final rate = totalDelta / months;
+    final rate   = totalDelta / months;
     if (rate.abs() < 0.05) return '—';
     final needed = (_current - _goal) / rate;
     if (needed <= 0) return 'Atteint !';
@@ -195,19 +226,17 @@ class _StatScreenState extends State<StatScreen>
                 const Text(
                   'STATISTIQUES',
                   style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 2,
-                  ),
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2),
                 ),
                 Text(
                   widget.client.name,
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.38),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                  ),
+                      color: Colors.white.withOpacity(0.38),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500),
                 ),
               ],
             ),
@@ -237,7 +266,8 @@ class _StatScreenState extends State<StatScreen>
             alignment: Alignment.topCenter,
             errorBuilder: (_, __, ___) => Container(
               color: const Color(0xFF1A1A1A),
-              child: const Icon(Icons.person, color: Colors.white12, size: 32),
+              child:
+                  const Icon(Icons.person, color: Colors.white12, size: 32),
             ),
           ),
           Container(
@@ -251,7 +281,8 @@ class _StatScreenState extends State<StatScreen>
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Row(
               children: [
                 const SizedBox(width: 70),
@@ -265,10 +296,9 @@ class _StatScreenState extends State<StatScreen>
                       Text(
                         widget.client.name,
                         style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 3),
                       Text(
@@ -276,9 +306,8 @@ class _StatScreenState extends State<StatScreen>
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.38),
-                          fontSize: 11,
-                        ),
+                            color: Colors.white.withOpacity(0.38),
+                            fontSize: 11),
                       ),
                     ],
                   ),
@@ -361,10 +390,15 @@ class _StatScreenState extends State<StatScreen>
 
   // ─── PROGRESS CARD ────────────────────────────────────────────────────────
   Widget _progressCard() {
-    final isLoss = _goal < _start;
+    final isLoss    = _goal < _start;
     final goingRight =
         (isLoss && _change <= 0) || (!isLoss && _change >= 0);
-    final changeColor = goingRight ? kNeonGreen : const Color(0xFFFF6B6B);
+    final changeColor =
+        goingRight ? kNeonGreen : const Color(0xFFFF6B6B);
+
+    if (_loadingHistory) {
+      return _loadingCard('Calcul de la progression…');
+    }
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -376,7 +410,6 @@ class _StatScreenState extends State<StatScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Label
           Row(children: [
             const Icon(Icons.trending_up_rounded, color: kNeonGreen, size: 14),
             const SizedBox(width: 6),
@@ -388,8 +421,6 @@ class _StatScreenState extends State<StatScreen>
                     letterSpacing: 1)),
           ]),
           const SizedBox(height: 16),
-
-          // Animated bar
           AnimatedBuilder(
             animation: _barAnim,
             builder: (_, __) {
@@ -425,8 +456,6 @@ class _StatScreenState extends State<StatScreen>
             },
           ),
           const SizedBox(height: 18),
-
-          // Nodes
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -445,8 +474,6 @@ class _StatScreenState extends State<StatScreen>
           const SizedBox(height: 18),
           const Divider(height: 1, color: Colors.white10),
           const SizedBox(height: 14),
-
-          // Info row
           Row(children: [
             Expanded(
                 child: _infoRow(
@@ -471,9 +498,7 @@ class _StatScreenState extends State<StatScreen>
         children: [
           Text(value,
               style: TextStyle(
-                  color: color,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700)),
+                  color: color, fontSize: 13, fontWeight: FontWeight.w700)),
           const SizedBox(height: 3),
           Text(label,
               style: TextStyle(
@@ -532,28 +557,58 @@ class _StatScreenState extends State<StatScreen>
                     color: Colors.white.withOpacity(0.25), fontSize: 10)),
           ]),
           const SizedBox(height: 18),
+
+          // ── Contenu du graphique ──────────────────────────────────────────
           SizedBox(
             height: 180,
-            child: _history.length < 2
-                ? Center(
-                    child: Text('Pas assez de données',
-                        style: TextStyle(
-                            color: Colors.white.withOpacity(0.2),
-                            fontSize: 13)))
-                : CustomPaint(
-                    painter: _ChartPainter(
-                      history: _history,
-                      goalWeight: _goal,
-                    ),
-                    child: const SizedBox.expand(),
-                  ),
+            child: _loadingHistory
+                ? const Center(
+                    child: CircularProgressIndicator(
+                        color: kNeonGreen, strokeWidth: 2))
+                : _historyError != null
+                    ? _chartError()
+                    : _history.length < 2
+                        ? Center(
+                            child: Text('Pas assez de données',
+                                style: TextStyle(
+                                    color: Colors.white.withOpacity(0.2),
+                                    fontSize: 13)))
+                        : CustomPaint(
+                            painter: _ChartPainter(
+                              history:    _history,
+                              goalWeight: _goal,
+                            ),
+                            child: const SizedBox.expand(),
+                          ),
           ),
+
           const SizedBox(height: 14),
           Row(children: [
             _legend(kNeonGreen, 'Poids réel'),
             const SizedBox(width: 18),
             _legend(const Color(0xFF5BC4F5), 'Objectif', dashed: true),
           ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _chartError() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.signal_wifi_off,
+              color: Colors.white.withOpacity(0.12), size: 32),
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: _fetchWeightHistory,
+            child: Text('Réessayer',
+                style: TextStyle(
+                    color: kNeonGreen.withOpacity(0.6),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600)),
+          ),
         ],
       ),
     );
@@ -609,8 +664,7 @@ class _StatScreenState extends State<StatScreen>
               const SizedBox(height: 3),
               Text('Estimé dans $_eta',
                   style: TextStyle(
-                      color: Colors.white.withOpacity(0.38),
-                      fontSize: 11)),
+                      color: Colors.white.withOpacity(0.38), fontSize: 11)),
             ],
           ),
         ),
@@ -622,8 +676,7 @@ class _StatScreenState extends State<StatScreen>
             border: Border.all(color: kNeonGreen.withOpacity(0.22)),
           ),
           child: Row(children: [
-            const Icon(Icons.access_time_rounded,
-                color: kNeonGreen, size: 12),
+            const Icon(Icons.access_time_rounded, color: kNeonGreen, size: 12),
             const SizedBox(width: 4),
             Text(_eta,
                 style: const TextStyle(
@@ -651,6 +704,34 @@ class _StatScreenState extends State<StatScreen>
               fontSize: 9,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.6)),
+    );
+  }
+
+  Widget _loadingCard(String label) {
+    return Container(
+      height: 90,
+      decoration: BoxDecoration(
+        color: kDarkCard,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Center(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                  color: kNeonGreen, strokeWidth: 1.5),
+            ),
+            const SizedBox(width: 10),
+            Text(label,
+                style: TextStyle(
+                    color: Colors.white.withOpacity(0.3), fontSize: 12)),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -705,7 +786,6 @@ class _ChartPainter extends CustomPainter {
           pT + (1 - (val - minW) / range) * cH,
         );
 
-    // Grid
     final gridP = Paint()
       ..color = Colors.white.withOpacity(0.07)
       ..strokeWidth = 0.8;
@@ -716,7 +796,6 @@ class _ChartPainter extends CustomPainter {
           Offset(0, y - 6), Colors.white.withOpacity(0.28));
     }
 
-    // Goal dashed
     final goalY = pT + (1 - (goalWeight - minW) / range) * cH;
     final dashP = Paint()
       ..color = _goalColor
@@ -726,7 +805,6 @@ class _ChartPainter extends CustomPainter {
           Offset((x + 5).clamp(0.0, size.width - pR), goalY), dashP);
     }
 
-    // Fill
     final fill = Path();
     for (int i = 0; i < history.length; i++) {
       final o = pt(i, history[i].weight);
@@ -746,7 +824,6 @@ class _ChartPainter extends CustomPainter {
         ).createShader(Rect.fromLTWH(0, pT, size.width, cH)),
     );
 
-    // Line
     final line = Path();
     for (int i = 0; i < history.length; i++) {
       final o = pt(i, history[i].weight);
@@ -762,19 +839,18 @@ class _ChartPainter extends CustomPainter {
         ..strokeJoin = StrokeJoin.round,
     );
 
-    // Dots
     for (int i = 0; i < history.length; i++) {
       final o = pt(i, history[i].weight);
       canvas.drawCircle(o, 3.5, Paint()..color = const Color(0xFF111118));
       canvas.drawCircle(o, 2.5, Paint()..color = _lineColor);
     }
 
-    // X labels
     const abbr = [
       'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jui',
       'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'
     ];
-    final step = ((history.length - 1) / 3).ceil().clamp(1, history.length);
+    final step =
+        ((history.length - 1) / 3).ceil().clamp(1, history.length);
     for (int i = 0; i < history.length; i += step) {
       final o = pt(i, history[i].weight);
       _txt(canvas, abbr[history[i].date.month - 1],

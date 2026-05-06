@@ -1,42 +1,203 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:test_hh/components/header.dart';
 import 'package:test_hh/components/navbar.dart';
 import 'package:test_hh/constants/colors.dart';
-import 'package:test_hh/models/exercice.dart';
-import 'package:test_hh/models/notes.dart';
 import 'package:test_hh/screens/tutorial.dart';
 
-class ExerciceScreen extends StatelessWidget {
-  final ExerciceModel exercice;
+const String _kBase = 'http://192.168.0.232:5000/api';
 
-  const ExerciceScreen({super.key, required this.exercice});
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+class NoteModel {
+  final String id;
+  final String text;
+  final String imageUrl;
+  const NoteModel({required this.id, required this.text, required this.imageUrl});
+
+  factory NoteModel.fromJson(Map<String, dynamic> j) => NoteModel(
+        id:       j['id'].toString(),
+        text:     j['text']     ?? '',
+        imageUrl: j['imageUrl'] ?? '',
+      );
+}
+
+class PartModel {
+  final String id;
+  final String name;
+  final String imageUrl;
+  const PartModel({required this.id, required this.name, required this.imageUrl});
+
+  factory PartModel.fromJson(Map<String, dynamic> j) => PartModel(
+        id:       j['id'].toString(),
+        name:     j['name']     ?? '',
+        imageUrl: j['imageUrl'] ?? '',
+      );
+}
+
+class ExerciceModel {
+  final String id;
+  final String name;
+  final String imageUrl;
+  final String muscle;
+  final String video;
+  final String description;
+  final String bodyPartID;
+  final List<NoteModel> notes;
+  final PartModel part;
+
+  const ExerciceModel({
+    required this.id,
+    required this.name,
+    required this.imageUrl,
+    required this.muscle,
+    required this.video,
+    required this.description,
+    required this.bodyPartID,
+    required this.notes,
+    required this.part,
+  });
+
+  factory ExerciceModel.fromJson(Map<String, dynamic> j) => ExerciceModel(
+        id:          j['id'].toString(),
+        name:        j['name']        ?? '',
+        imageUrl:    j['imageUrl']    ?? '',
+        muscle:      j['muscle']      ?? '',
+        video:       j['video']       ?? '',
+        description: j['description'] ?? '',
+        bodyPartID:  j['bodyPartID'].toString(),
+        notes: (j['notes'] as List? ?? [])
+            .map((n) => NoteModel.fromJson(n))
+            .toList(),
+        part: j['part'] != null
+            ? PartModel.fromJson(j['part'])
+            : const PartModel(id: '', name: '', imageUrl: ''),
+      );
+
+  String get typeLabel => muscle;
+  String get image     => imageUrl;
+}
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
+
+class ExerciceScreen extends StatefulWidget {
+  final String exerciceID;
+  final String exerciceName; // pour afficher pendant le loading
+
+  const ExerciceScreen({
+    super.key,
+    required this.exerciceID,
+    required this.exerciceName,
+  });
+
+  @override
+  State<ExerciceScreen> createState() => _ExerciceScreenState();
+}
+
+class _ExerciceScreenState extends State<ExerciceScreen> {
+  ExerciceModel? _exercice;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchExercice();
+  }
+
+  // ── API ───────────────────────────────────────────────────────────────────
+
+  Future<void> _fetchExercice() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final uri = Uri.parse('$_kBase/exercice/${widget.exerciceID}');
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) {
+        throw Exception('Erreur ${response.statusCode}');
+      }
+
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      if (body['success'] != true) throw Exception(body['message']);
+
+      setState(() {
+        _exercice = ExerciceModel.fromJson(body['data']);
+        _loading  = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error   = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return Scaffold(
+        backgroundColor: kDarkBg,
+        appBar: Header(),
+        body: const Center(
+          child: CircularProgressIndicator(color: kNeonGreen, strokeWidth: 2),
+        ),
+        bottomNavigationBar: NavBar(),
+      );
+    }
+
+    if (_error != null) {
+      return Scaffold(
+        backgroundColor: kDarkBg,
+        appBar: Header(),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.signal_wifi_off,
+                  color: Colors.white.withOpacity(0.12), size: 36),
+              const SizedBox(height: 10),
+              GestureDetector(
+                onTap: _fetchExercice,
+                child: Text('Réessayer',
+                    style: TextStyle(
+                        color: kNeonGreen.withOpacity(0.6),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+        ),
+        bottomNavigationBar: NavBar(),
+      );
+    }
+
+    final ex = _exercice!;
     return Scaffold(
       backgroundColor: kDarkBg,
       appBar: Header(),
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
-            SliverToBoxAdapter(child: _buildHero(context)),
+            SliverToBoxAdapter(child: _buildHero(context, ex)),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(18, 0, 18, 100),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
                   const SizedBox(height: 20),
-                  _buildInfoRow(context),
+                  _buildInfoRow(context, ex),
                   const SizedBox(height: 20),
-                  _buildDescriptionCard(),
+                  _buildDescriptionCard(ex),
                   const SizedBox(height: 14),
-                  if (exercice.notes.isNotEmpty) ...[
-                    _buildSectionHeader(
-                        Icons.format_list_bulleted, 'INSTRUCTIONS'),
+                  if (ex.notes.isNotEmpty) ...[
+                    _buildSectionHeader(Icons.format_list_bulleted, 'INSTRUCTIONS'),
                     const SizedBox(height: 10),
-                    _buildNotesList(),
+                    _buildNotesList(ex),
                     const SizedBox(height: 14),
                   ],
-                  _buildTutorialBanner(context),
+                  _buildTutorialBanner(context, ex),
                 ]),
               ),
             ),
@@ -47,17 +208,16 @@ class ExerciceScreen extends StatelessWidget {
     );
   }
 
-  // ─── HERO ────────────────────────────────────────────────────────────────────
+  // ─── HERO ─────────────────────────────────────────────────────────────────
 
-  Widget _buildHero(BuildContext context) {
+  Widget _buildHero(BuildContext context, ExerciceModel ex) {
     return Stack(
       children: [
-        // Full-width image
         SizedBox(
           height: 260,
           width: double.infinity,
           child: Image.network(
-            exercice.image,
+            ex.image,
             fit: BoxFit.cover,
             errorBuilder: (_, __, ___) => Container(
               color: const Color(0xFF1A1A1A),
@@ -66,27 +226,20 @@ class ExerciceScreen extends StatelessWidget {
             ),
           ),
         ),
-        // Bottom gradient
         Positioned.fill(
           child: Container(
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [
-                  Colors.transparent,
-                  kDarkBg,
-                ],
-                stops: const [0.45, 1.0],
+                colors: [Colors.transparent, kDarkBg],
+                stops: [0.45, 1.0],
               ),
             ),
           ),
         ),
-        // Top bar overlay
         Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
+          top: 0, left: 0, right: 0,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
             child: Row(
@@ -94,8 +247,7 @@ class ExerciceScreen extends StatelessWidget {
                 GestureDetector(
                   onTap: () => Navigator.pop(context),
                   child: Container(
-                    width: 38,
-                    height: 38,
+                    width: 38, height: 38,
                     decoration: BoxDecoration(
                       color: Colors.black.withOpacity(0.45),
                       borderRadius: BorderRadius.circular(12),
@@ -106,39 +258,30 @@ class ExerciceScreen extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                _buildTypeChip(exercice.typeLabel),
+                _buildTypeChip(ex.typeLabel),
               ],
             ),
           ),
         ),
-        // Title at bottom of hero
         Positioned(
-          bottom: 16,
-          left: 18,
-          right: 18,
+          bottom: 16, left: 18, right: 18,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                exercice.name,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 26,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.5,
-                  shadows: [Shadow(color: Colors.black87, blurRadius: 10)],
-                ),
-              ),
+              Text(ex.name,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
+                      shadows: [Shadow(color: Colors.black87, blurRadius: 10)])),
               const SizedBox(height: 4),
-              Text(
-                exercice.part.name.toUpperCase(),
-                style: TextStyle(
-                  color: kNeonGreen.withOpacity(0.8),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.5,
-                ),
-              ),
+              Text(ex.part.name.toUpperCase(),
+                  style: TextStyle(
+                      color: kNeonGreen.withOpacity(0.8),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.5)),
             ],
           ),
         ),
@@ -146,32 +289,19 @@ class ExerciceScreen extends StatelessWidget {
     );
   }
 
-  // ─── INFO ROW ───────────────────────────────────────────────────────────────
+  // ─── INFO ROW ─────────────────────────────────────────────────────────────
 
-  Widget _buildInfoRow(BuildContext context) {
+  Widget _buildInfoRow(BuildContext context, ExerciceModel ex) {
     return Row(
       children: [
-        _buildStatCard(
-          Icons.local_fire_department_outlined,
-          exercice.typeLabel,
-          'Type',
-        ),
+        _buildStatCard(Icons.local_fire_department_outlined, ex.typeLabel, 'Type'),
         const SizedBox(width: 10),
-        _buildStatCard(
-          Icons.notes_rounded,
-          '${exercice.notes.length}',
-          'Steps',
-        ),
+        _buildStatCard(Icons.notes_rounded, '${ex.notes.length}', 'Steps'),
         const SizedBox(width: 10),
-        // Tutorial quick-access
         Expanded(
           child: GestureDetector(
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => TutorialScreen(exercice: exercice),
-              ),
-            ),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => TutorialScreen(exercice: ex))),
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
               decoration: BoxDecoration(
@@ -179,27 +309,22 @@ class ExerciceScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 boxShadow: [
                   BoxShadow(
-                    color: kNeonGreen.withOpacity(0.25),
-                    blurRadius: 16,
-                    offset: const Offset(0, 4),
-                  ),
+                      color: kNeonGreen.withOpacity(0.25),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4))
                 ],
               ),
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.play_circle_outline,
-                      color: Colors.black, size: 18),
+                  Icon(Icons.play_circle_outline, color: Colors.black, size: 18),
                   SizedBox(width: 6),
-                  Text(
-                    'TUTORIAL',
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
+                  Text('TUTORIAL',
+                      style: TextStyle(
+                          color: Colors.black,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.8)),
                 ],
               ),
             ),
@@ -223,32 +348,26 @@ class ExerciceScreen extends StatelessWidget {
           children: [
             Icon(icon, color: kNeonGreen, size: 16),
             const SizedBox(height: 6),
-            Text(
-              value,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
+            Text(value,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800)),
             const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.35),
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+            Text(label,
+                style: TextStyle(
+                    color: Colors.white.withOpacity(0.35),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500)),
           ],
         ),
       ),
     );
   }
 
-  // ─── DESCRIPTION ────────────────────────────────────────────────────────────
+  // ─── DESCRIPTION ──────────────────────────────────────────────────────────
 
-  Widget _buildDescriptionCard() {
+  Widget _buildDescriptionCard(ExerciceModel ex) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -262,22 +381,19 @@ class ExerciceScreen extends StatelessWidget {
         children: [
           _buildSectionHeader(Icons.info_outline, 'ABOUT'),
           const SizedBox(height: 10),
-          Text(
-            exercice.description,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.62),
-              fontSize: 13,
-              height: 1.65,
-            ),
-          ),
+          Text(ex.description,
+              style: TextStyle(
+                  color: Colors.white.withOpacity(0.62),
+                  fontSize: 13,
+                  height: 1.65)),
         ],
       ),
     );
   }
 
-  // ─── INSTRUCTIONS LIST ───────────────────────────────────────────────────────
+  // ─── NOTES LIST ───────────────────────────────────────────────────────────
 
-  Widget _buildNotesList() {
+  Widget _buildNotesList(ExerciceModel ex) {
     return Container(
       decoration: BoxDecoration(
         color: kDarkCard,
@@ -286,11 +402,9 @@ class ExerciceScreen extends StatelessWidget {
       ),
       clipBehavior: Clip.hardEdge,
       child: Column(
-        children: exercice.notes.asMap().entries.map((entry) {
-          final idx = entry.key;
-          final note = entry.value;
-          final isLast = idx == exercice.notes.length - 1;
-          return _buildNoteItem(idx + 1, note, isLast);
+        children: ex.notes.asMap().entries.map((entry) {
+          return _buildNoteItem(
+              entry.key + 1, entry.value, entry.key == ex.notes.length - 1);
         }).toList(),
       ),
     );
@@ -304,10 +418,8 @@ class ExerciceScreen extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Step badge
               Container(
-                width: 24,
-                height: 24,
+                width: 24, height: 24,
                 margin: const EdgeInsets.only(top: 1, right: 12),
                 decoration: BoxDecoration(
                   color: kNeonGreen.withOpacity(0.15),
@@ -315,39 +427,31 @@ class ExerciceScreen extends StatelessWidget {
                   border: Border.all(color: kNeonGreen.withOpacity(0.3)),
                 ),
                 child: Center(
-                  child: Text(
-                    '$index',
-                    style: const TextStyle(
-                      color: kNeonGreen,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
+                  child: Text('$index',
+                      style: const TextStyle(
+                          color: kNeonGreen,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800)),
                 ),
               ),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      note.text,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.75),
-                        fontSize: 13,
-                        height: 1.55,
-                      ),
-                    ),
+                    Text(note.text,
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.75),
+                            fontSize: 13,
+                            height: 1.55)),
                     if (note.imageUrl.isNotEmpty) ...[
                       const SizedBox(height: 10),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(10),
-                        child: Image.network(
-                          note.imageUrl,
-                          height: 140,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                        ),
+                        child: Image.network(note.imageUrl,
+                            height: 140,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const SizedBox.shrink()),
                       ),
                     ],
                     const SizedBox(height: 14),
@@ -363,16 +467,12 @@ class ExerciceScreen extends StatelessWidget {
     );
   }
 
-  // ─── TUTORIAL BANNER ────────────────────────────────────────────────────────
+  // ─── TUTORIAL BANNER ──────────────────────────────────────────────────────
 
-  Widget _buildTutorialBanner(BuildContext context) {
+  Widget _buildTutorialBanner(BuildContext context, ExerciceModel ex) {
     return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => TutorialScreen(exercice: exercice),
-        ),
-      ),
+      onTap: () => Navigator.push(context,
+          MaterialPageRoute(builder: (_) => TutorialScreen(exercice: ex))),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(18),
@@ -384,8 +484,7 @@ class ExerciceScreen extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width: 46,
-              height: 46,
+              width: 46, height: 46,
               decoration: BoxDecoration(
                 color: kNeonGreen.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(14),
@@ -399,22 +498,15 @@ class ExerciceScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Watch Tutorial',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                  const Text('Watch Tutorial',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700)),
                   const SizedBox(height: 3),
-                  Text(
-                    'Step-by-step video guide for ${exercice.name}',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.38),
-                      fontSize: 11,
-                    ),
-                  ),
+                  Text('Step-by-step video guide for ${ex.name}',
+                      style: TextStyle(
+                          color: Colors.white.withOpacity(0.38), fontSize: 11)),
                 ],
               ),
             ),
@@ -426,22 +518,19 @@ class ExerciceScreen extends StatelessWidget {
     );
   }
 
-  // ─── HELPERS ────────────────────────────────────────────────────────────────
+  // ─── Shared ───────────────────────────────────────────────────────────────
 
   Widget _buildSectionHeader(IconData icon, String label) {
     return Row(
       children: [
         Icon(icon, color: kNeonGreen, size: 14),
         const SizedBox(width: 6),
-        Text(
-          label,
-          style: TextStyle(
-            color: kNeonGreen.withOpacity(0.9),
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1,
-          ),
-        ),
+        Text(label,
+            style: TextStyle(
+                color: kNeonGreen.withOpacity(0.9),
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1)),
       ],
     );
   }
@@ -454,15 +543,12 @@ class ExerciceScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: kNeonGreen.withOpacity(0.35)),
       ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: kNeonGreen,
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.8,
-        ),
-      ),
+      child: Text(label,
+          style: const TextStyle(
+              color: kNeonGreen,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8)),
     );
   }
 }
