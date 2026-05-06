@@ -4,7 +4,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/models/client.dart';
 import 'package:test_hh/models/coach.dart';
+import 'package:test_hh/screens/login.dart';
 import 'package:test_hh/screens/profileClient.dart';
+import 'package:test_hh/services/api_service.dart';
 
 class ProfileCoach extends StatefulWidget {
   const ProfileCoach({super.key});
@@ -14,57 +16,9 @@ class ProfileCoach extends StatefulWidget {
 }
 
 class _ProfileCoachState extends State<ProfileCoach> {
-  // ── Hardcoded coach data ──────────────────────────────────────────────────
-  final Coach _coach = Coach(
-    id: 1,
-    name: 'Alex Martin',
-    specialty: 'Strength & Conditioning',
-    bio: 'Passionate coach helping athletes reach their peak performance through science-based training.',
-    createdAt: DateTime(2021, 3, 15),
-    clients: [
-      Client(
-        id: 1,
-        name: 'Sarah Johnson',
-        image: '',
-        birth: DateTime(1998, 4, 12),
-        weight: 65.0,
-        height: 168.0,
-        weightGoal: 60.0,
-        goal: 'Lose Weight',
-        frequency: 2,
-        gender: 'Female',
-        coach: null, createdAt:  DateTime(2023, 7, 20), coachID: 1,
-      ),
-      Client(
-        id: 2,
-        name: 'Mike Torres',
-        image: '',
-        birth: DateTime(1995, 7, 22),
-        weight: 82.0,
-        height: 178.0,
-        weightGoal: 88.0,
-        goal: 'Build Muscle',
-        frequency: 4,
-        gender: 'Male',
-        coach: null, createdAt:  DateTime(2023, 7, 20), coachID: 1,
-      ),
-      Client(
-        id: 3,
-        name: 'Emma Davis',
-        image: '',
-        birth: DateTime(2000, 1, 5),
-        weight: 58.0,
-        height: 162.0,
-        weightGoal: 55.0,
-        goal: 'Stay Healthy',
-        frequency: 1,
-        gender: 'Female',
-        coach: null, createdAt:  DateTime(2023, 7, 20), coachID: 1,
-      ),
-    ], image: '',
-  );
-
-  // ── State ─────────────────────────────────────────────────────────────────
+  Coach? _coach;
+  bool _isLoading = true;
+  String? _error;
   bool _isEditing = false;
   File? _profileImage;
 
@@ -72,14 +26,13 @@ class _ProfileCoachState extends State<ProfileCoach> {
   late TextEditingController _specialtyController;
   late TextEditingController _bioController;
 
-  // ── Static data ───────────────────────────────────────────────────────────
   final List<Map<String, dynamic>> _goals = [
-    {'icon': Icons.local_fire_department, 'title': 'Lose Weight', 'sub': 'Burn fat, get lean'},
-    {'icon': Icons.fitness_center, 'title': 'Build Muscle', 'sub': 'Gain mass & strength'},
-    {'icon': Icons.monitor_heart, 'title': 'Stay Healthy', 'sub': 'Maintain balance'},
-    {'icon': Icons.directions_run, 'title': 'Boost Endurance', 'sub': 'Cardio & stamina'},
-    {'icon': Icons.self_improvement, 'title': 'Flexibility', 'sub': 'Mobility & wellness'},
-    {'icon': Icons.electric_bolt, 'title': 'Recomposition', 'sub': 'Lose fat, gain muscle'},
+    {'icon': Icons.local_fire_department, 'title': 'Lose Weight'},
+    {'icon': Icons.fitness_center, 'title': 'Build Muscle'},
+    {'icon': Icons.monitor_heart, 'title': 'Stay Healthy'},
+    {'icon': Icons.directions_run, 'title': 'Boost Endurance'},
+    {'icon': Icons.self_improvement, 'title': 'Flexibility'},
+    {'icon': Icons.electric_bolt, 'title': 'Recomposition'},
   ];
 
   final List<Map<String, String>> _frequencies = [
@@ -90,17 +43,13 @@ class _ProfileCoachState extends State<ProfileCoach> {
     {'title': 'Athlete', 'sub': '6 – 7 days / week'},
   ];
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-  String _formattedDate(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')} / ${d.month.toString().padLeft(2, '0')} / ${d.year}';
-
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: _coach.name);
-    _specialtyController = TextEditingController(text: _coach.specialty ?? 'Strength & Conditioning');
-    _bioController = TextEditingController(
-        text: _coach.bio ?? 'Passionate coach helping athletes reach their peak.');
+    _nameController = TextEditingController();
+    _specialtyController = TextEditingController();
+    _bioController = TextEditingController();
+    _loadCoach();
   }
 
   @override
@@ -111,37 +60,91 @@ class _ProfileCoachState extends State<ProfileCoach> {
     super.dispose();
   }
 
+  Future<void> _loadCoach() async {
+    setState(() { _isLoading = true; _error = null; });
+
+    final res = await ApiService.getMyCoachProfile();
+    if (!mounted) return;
+
+    if (res['success'] == true && res['coach'] != null) {
+      final coach = Coach.fromJson(res['coach'] as Map<String, dynamic>);
+      setState(() {
+        _coach = coach;
+        _nameController.text = coach.name;
+        _specialtyController.text = coach.specialty ?? '';
+        _bioController.text = coach.bio ?? '';
+        _isLoading = false;
+      });
+    } else {
+      setState(() {
+        _error = res['message'] ?? 'Erreur de chargement.';
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _saveCoach() async {
+    if (_coach == null) return;
+
+    final res = await ApiService.updateCoach(_coach!.id, {
+      'name': _nameController.text.trim(),
+      'specialty': _specialtyController.text.trim(),
+      'bio': _bioController.text.trim(),
+    });
+
+    if (!mounted) return;
+
+    if (res['success'] == true && res['coach'] != null) {
+      final updated = Coach.fromJson(res['coach'] as Map<String, dynamic>);
+      setState(() {
+        _coach = updated.copyWith(clients: _coach!.clients);
+      });
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: res['success'] == true ? kNeonGreen.withOpacity(0.9) : Colors.redAccent.withOpacity(0.9),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        content: Text(
+          res['success'] == true ? 'Profil sauvegardé !' : res['message'] ?? 'Erreur.',
+          style: const TextStyle(color: kDarkBg, fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+
+  String _formattedDate(DateTime d) => '${d.day.toString().padLeft(2, '0')} / ${d.month.toString().padLeft(2, '0')} / ${d.year}';
+
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked != null) setState(() => _profileImage = File(picked.path));
   }
 
-  void _toggleEdit() {
-    setState(() => _isEditing = !_isEditing);
-    if (!_isEditing) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: kNeonGreen.withOpacity(0.9),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          content: const Text(
-            'Profile saved!',
-            style: TextStyle(color: kDarkBg, fontWeight: FontWeight.w700),
-          ),
-        ),
-      );
+  void _toggleEdit() async {
+    if (_isEditing) {
+      await _saveCoach();
     }
+    setState(() => _isEditing = !_isEditing);
   }
 
   void _openClientProfile(Client client) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const ProfileClient()),
+      MaterialPageRoute(builder: (_) => ProfileClient(clientId: client.id)),
     );
   }
 
-  // ── BUILD ─────────────────────────────────────────────────────────────────
+  Future<void> _logout() async {
+    await ApiService.logout();
+    Navigator.pushAndRemoveUntil(
+    context,
+    MaterialPageRoute(builder: (_) => LoginScreen()),
+    (route) => false,
+  );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -154,30 +157,7 @@ class _ProfileCoachState extends State<ProfileCoach> {
             child: Column(
               children: [
                 _buildAppBar(),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 100),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 20),
-                        _buildHeroCard(),
-                        const SizedBox(height: 16),
-                        _buildSection('COACH INFO', _buildCoachInfo()),
-                        const SizedBox(height: 14),
-                        _buildSection('SPECIALTY', _buildCoachSpecialty()),
-                        const SizedBox(height: 14),
-                        _buildSection('BIO', _buildCoachBio()),
-                        const SizedBox(height: 14),
-                        _buildSection(
-                          'MY CLIENTS (${_coach.clients.length})',
-                          _buildClientList(),
-                        ),
-                        const SizedBox(height: 30),
-                      ],
-                    ),
-                  ),
-                ),
+                Expanded(child: _buildBody()),
               ],
             ),
           ),
@@ -186,7 +166,64 @@ class _ProfileCoachState extends State<ProfileCoach> {
     );
   }
 
-  // ── APP BAR ───────────────────────────────────────────────────────────────
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: kNeonGreen),
+      );
+    }
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, color: Colors.redAccent, size: 40),
+            const SizedBox(height: 12),
+            Text(_error!, style: TextStyle(color: Colors.white.withOpacity(0.6))),
+            const SizedBox(height: 16),
+            GestureDetector(
+              onTap: _loadCoach,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                decoration: BoxDecoration(
+                  color: kNeonGreen.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: kNeonGreen.withOpacity(0.4)),
+                ),
+                child: const Text('Réessayer', style: TextStyle(color: kNeonGreen, fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_coach == null) return const SizedBox();
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 20),
+          _buildHeroCard(),
+          const SizedBox(height: 16),
+          _buildSection('COACH INFO', _buildCoachInfo()),
+          const SizedBox(height: 14),
+          _buildSection('SPECIALTY', _buildCoachSpecialty()),
+          const SizedBox(height: 14),
+          _buildSection('BIO', _buildCoachBio()),
+          const SizedBox(height: 14),
+          _buildSection(
+            'MY CLIENTS (${_coach!.clients.length})',
+            _buildClientList(),
+          ),
+          const SizedBox(height: 20),
+          _buildLogoutButton(), // Bouton de déconnexion ajouté ici
+        ],
+      ),
+    );
+  }
+
   Widget _buildAppBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
@@ -194,52 +231,79 @@ class _ProfileCoachState extends State<ProfileCoach> {
         children: [
           const Text(
             'COACH PROFILE',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 2,
-            ),
+            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: 2),
           ),
           const Spacer(),
-          GestureDetector(
-            onTap: _toggleEdit,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-              decoration: BoxDecoration(
-                color: _isEditing ? kNeonGreen : kNeonGreen.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: kNeonGreen.withOpacity(_isEditing ? 1 : 0.45)),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _isEditing ? Icons.check_rounded : Icons.edit_outlined,
-                    color: _isEditing ? kDarkBg : kNeonGreen,
-                    size: 15,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    _isEditing ? 'SAVE' : 'EDIT',
-                    style: TextStyle(
+          if (!_isLoading && _error == null)
+            GestureDetector(
+              onTap: _toggleEdit,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                decoration: BoxDecoration(
+                  color: _isEditing ? kNeonGreen : kNeonGreen.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: kNeonGreen.withOpacity(_isEditing ? 1 : 0.45)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _isEditing ? Icons.check_rounded : Icons.edit_outlined,
                       color: _isEditing ? kDarkBg : kNeonGreen,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1,
+                      size: 15,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 6),
+                    Text(
+                      _isEditing ? 'SAVE' : 'EDIT',
+                      style: TextStyle(
+                        color: _isEditing ? kDarkBg : kNeonGreen,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
   }
 
-  // ── HERO CARD ─────────────────────────────────────────────────────────────
+  Widget _buildLogoutButton() {
+    return GestureDetector(
+      onTap: _logout,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.redAccent.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.redAccent, width: 1.5),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.logout, color: Colors.redAccent, size: 20),
+            SizedBox(width: 8),
+            Text(
+              'SE DÉCONNECTER',
+              style: TextStyle(
+                color: Colors.redAccent,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeroCard() {
+    final coach = _coach!;
     final badge = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
@@ -253,12 +317,8 @@ class _ProfileCoachState extends State<ProfileCoach> {
           const Icon(Icons.star_rounded, color: Color(0xFF1A6BFF), size: 12),
           const SizedBox(width: 5),
           Text(
-            'COACH · ${_coach.clients.length} clients',
-            style: const TextStyle(
-              color: Color(0xFF1A6BFF),
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-            ),
+            'COACH · ${coach.clients.length} clients',
+            style: const TextStyle(color: Color(0xFF1A6BFF), fontSize: 11, fontWeight: FontWeight.w700),
           ),
         ],
       ),
@@ -272,15 +332,9 @@ class _ProfileCoachState extends State<ProfileCoach> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            const Color(0xFF1A1A1A),
-            const Color(0xFF111111),
-            kNeonGreen.withOpacity(0.04),
-          ],
+          colors: [const Color(0xFF1A1A1A), const Color(0xFF111111), kNeonGreen.withOpacity(0.04)],
         ),
-        boxShadow: [
-          BoxShadow(color: kNeonGreen.withOpacity(0.07), blurRadius: 30, spreadRadius: 2)
-        ],
+        boxShadow: [BoxShadow(color: kNeonGreen.withOpacity(0.07), blurRadius: 30, spreadRadius: 2)],
       ),
       child: Row(
         children: [
@@ -295,17 +349,23 @@ class _ProfileCoachState extends State<ProfileCoach> {
                     shape: BoxShape.circle,
                     color: kNeonGreen.withOpacity(0.08),
                     border: Border.all(color: kNeonGreen.withOpacity(0.45), width: 2),
-                    boxShadow: [
-                      BoxShadow(color: kNeonGreen.withOpacity(0.15), blurRadius: 20)
-                    ],
+                    boxShadow: [BoxShadow(color: kNeonGreen.withOpacity(0.15), blurRadius: 20)],
                   ),
                   child: _profileImage != null
                       ? ClipOval(child: Image.file(_profileImage!, fit: BoxFit.cover))
-                      : const Icon(
-                          Icons.sports_gymnastics_rounded,
-                          color: kNeonGreen,
-                          size: 34,
-                        ),
+                      : coach.image.isNotEmpty
+                          ? ClipOval(
+                              child: Image.network(
+                                coach.image,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const Icon(
+                                  Icons.sports_gymnastics_rounded,
+                                  color: kNeonGreen,
+                                  size: 34,
+                                ),
+                              ),
+                            )
+                          : const Icon(Icons.sports_gymnastics_rounded, color: kNeonGreen, size: 34),
                 ),
                 if (_isEditing)
                   Positioned(
@@ -343,7 +403,7 @@ class _ProfileCoachState extends State<ProfileCoach> {
                       ),
                 const SizedBox(height: 4),
                 Text(
-                  'Member since ${_formattedDate(_coach.createdAt)}',
+                  'Membre depuis ${_formattedDate(coach.createdAt)}',
                   style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 13),
                 ),
                 const SizedBox(height: 10),
@@ -356,7 +416,6 @@ class _ProfileCoachState extends State<ProfileCoach> {
     );
   }
 
-  // ── SECTION BUILDER ───────────────────────────────────────────────────────
   Widget _buildSection(String title, Widget content) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -376,7 +435,6 @@ class _ProfileCoachState extends State<ProfileCoach> {
     );
   }
 
-  // ── COACH INFO ────────────────────────────────────────────────────────────
   Widget _buildCoachInfo() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -389,22 +447,20 @@ class _ProfileCoachState extends State<ProfileCoach> {
         children: [
           _infoRow(
             icon: Icons.person_outline,
-            label: 'Full Name',
-            child: _isEditing
-                ? _inlineTextField(_nameController)
-                : _infoValue(_nameController.text.isEmpty ? '—' : _nameController.text),
+            label: 'Nom complet',
+            child: _isEditing ? _inlineTextField(_nameController) : _infoValue(_nameController.text.isEmpty ? '—' : _nameController.text),
           ),
           _divider(),
           _infoRow(
             icon: Icons.badge_outlined,
             label: 'Coach ID',
-            child: _infoValue('#${_coach.id}'),
+            child: _infoValue('#${_coach!.id}'),
           ),
           _divider(),
           _infoRow(
             icon: Icons.calendar_today_outlined,
-            label: 'Member Since',
-            child: _infoValue(_formattedDate(_coach.createdAt)),
+            label: 'Membre depuis',
+            child: _infoValue(_formattedDate(_coach!.createdAt)),
             isLast: true,
           ),
         ],
@@ -422,11 +478,10 @@ class _ProfileCoachState extends State<ProfileCoach> {
       ),
       child: _infoRow(
         icon: Icons.sports_gymnastics_rounded,
-        label: 'Specialty',
+        label: 'Spécialité',
         child: _isEditing
             ? _inlineTextField(_specialtyController, width: 180)
-            : _infoValue(
-                _specialtyController.text.isEmpty ? '—' : _specialtyController.text),
+            : _infoValue(_specialtyController.text.isEmpty ? '—' : _specialtyController.text),
         isLast: true,
       ),
     );
@@ -445,11 +500,7 @@ class _ProfileCoachState extends State<ProfileCoach> {
           ? TextField(
               controller: _bioController,
               maxLines: 4,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
+              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
               decoration: InputDecoration(
                 isDense: true,
                 contentPadding: const EdgeInsets.all(12),
@@ -463,27 +514,19 @@ class _ProfileCoachState extends State<ProfileCoach> {
                   borderRadius: BorderRadius.circular(10),
                   borderSide: const BorderSide(color: kNeonGreen),
                 ),
-                hintText: 'Write something about yourself…',
-                hintStyle: TextStyle(
-                  color: Colors.white.withOpacity(0.3),
-                  fontSize: 13,
-                ),
+                hintText: 'Écrivez quelque chose sur vous…',
+                hintStyle: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 13),
               ),
             )
           : Text(
-              _bioController.text.isEmpty ? 'No bio yet.' : _bioController.text,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
-                fontSize: 13,
-                height: 1.6,
-              ),
+              _bioController.text.isEmpty ? 'Pas de bio.' : _bioController.text,
+              style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13, height: 1.6),
             ),
     );
   }
 
-  // ── CLIENT LIST ───────────────────────────────────────────────────────────
   Widget _buildClientList() {
-    final clients = _coach.clients;
+    final clients = _coach!.clients;
 
     if (clients.isEmpty) {
       return Container(
@@ -499,12 +542,8 @@ class _ProfileCoachState extends State<ProfileCoach> {
             Icon(Icons.group_outlined, color: Colors.white.withOpacity(0.2), size: 36),
             const SizedBox(height: 10),
             Text(
-              'No clients yet',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.35),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
+              'Pas encore de clients',
+              style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -522,11 +561,7 @@ class _ProfileCoachState extends State<ProfileCoach> {
           final i = entry.key;
           final client = entry.value;
           final isLast = i == clients.length - 1;
-
-          final goalEntry = _goals.firstWhere(
-            (g) => g['title'] == client.goal,
-            orElse: () => _goals.first,
-          );
+          final goalEntry = _goals.firstWhere((g) => g['title'] == client.goal, orElse: () => _goals.first);
 
           return Column(
             children: [
@@ -546,8 +581,7 @@ class _ProfileCoachState extends State<ProfileCoach> {
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: kNeonGreen.withOpacity(0.08),
-                          border:
-                              Border.all(color: kNeonGreen.withOpacity(0.3), width: 1.5),
+                          border: Border.all(color: kNeonGreen.withOpacity(0.3), width: 1.5),
                         ),
                         child: client.image.isNotEmpty
                             ? ClipOval(
@@ -561,11 +595,7 @@ class _ProfileCoachState extends State<ProfileCoach> {
                                   ),
                                 ),
                               )
-                            : const Icon(
-                                Icons.person_outline_rounded,
-                                color: kNeonGreen,
-                                size: 22,
-                              ),
+                            : const Icon(Icons.person_outline_rounded, color: kNeonGreen, size: 22),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
@@ -574,20 +604,12 @@ class _ProfileCoachState extends State<ProfileCoach> {
                           children: [
                             Text(
                               client.name,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                              ),
+                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700),
                             ),
                             const SizedBox(height: 3),
                             Row(
                               children: [
-                                Icon(
-                                  goalEntry['icon'] as IconData,
-                                  color: kNeonGreen,
-                                  size: 11,
-                                ),
+                                Icon(goalEntry['icon'] as IconData, color: kNeonGreen, size: 11),
                                 const SizedBox(width: 4),
                                 Text(
                                   client.goal,
@@ -605,30 +627,21 @@ class _ProfileCoachState extends State<ProfileCoach> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          _miniChip(
-                            '${client.weight.toStringAsFixed(1)} kg',
-                            Icons.monitor_weight_outlined,
-                          ),
+                          _miniChip('${client.weight.toStringAsFixed(1)} kg', Icons.monitor_weight_outlined),
                           const SizedBox(height: 4),
                           _miniChip(
-                            _frequencies[
-                                client.frequency.clamp(0, _frequencies.length - 1)]['title']!,
+                            _frequencies[client.frequency.clamp(0, _frequencies.length - 1)]['title']!,
                             Icons.fitness_center,
                           ),
                         ],
                       ),
                       const SizedBox(width: 10),
-                      Icon(
-                        Icons.chevron_right_rounded,
-                        color: Colors.white.withOpacity(0.25),
-                        size: 20,
-                      ),
+                      const Icon(Icons.chevron_right_rounded, color: Colors.white24, size: 20),
                     ],
                   ),
                 ),
               ),
-              if (!isLast)
-                Divider(color: Colors.white.withOpacity(0.05), height: 1),
+              if (!isLast) Divider(color: Colors.white.withOpacity(0.05), height: 1),
             ],
           );
         }).toList(),
@@ -651,24 +664,14 @@ class _ProfileCoachState extends State<ProfileCoach> {
           const SizedBox(width: 3),
           Text(
             label,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.6),
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 10, fontWeight: FontWeight.w600),
           ),
         ],
       ),
     );
   }
 
-  // ── SHARED HELPERS ────────────────────────────────────────────────────────
-  Widget _infoRow({
-    required IconData icon,
-    required String label,
-    required Widget child,
-    bool isLast = false,
-  }) {
+  Widget _infoRow({required IconData icon, required String label, required Widget child, bool isLast = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
@@ -695,16 +698,16 @@ class _ProfileCoachState extends State<ProfileCoach> {
     );
   }
 
-  Widget _infoValue(String text) => Text(
-        text,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-        ),
-      );
+  Widget _infoValue(String text) {
+    return Text(
+      text,
+      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+    );
+  }
 
-  Widget _divider() => Divider(color: Colors.white.withOpacity(0.05), height: 1);
+  Widget _divider() {
+    return Divider(color: Colors.white.withOpacity(0.05), height: 1);
+  }
 
   Widget _inlineTextField(TextEditingController controller, {double width = 160}) {
     return SizedBox(
@@ -712,11 +715,7 @@ class _ProfileCoachState extends State<ProfileCoach> {
       height: 32,
       child: TextField(
         controller: controller,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-        ),
+        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
         decoration: InputDecoration(
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

@@ -5,39 +5,22 @@ import 'package:image_picker/image_picker.dart';
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/models/client.dart';
 import 'package:test_hh/models/coach.dart';
+import 'package:test_hh/screens/login.dart';
+import 'package:test_hh/screens/profileClient.dart';
+import 'package:test_hh/services/api_service.dart';
 
 class ProfileClient extends StatefulWidget {
-  const ProfileClient({super.key});
+  final int? clientId;
+  const ProfileClient({super.key, this.clientId});
 
   @override
   State<ProfileClient> createState() => _ProfileClientState();
 }
 
 class _ProfileClientState extends State<ProfileClient> {
-  // ── Hardcoded client data ─────────────────────────────────────────────────
-  final Client _client = Client(
-    id: 1,
-    name: 'Sarah Johnson',
-    image: '',
-    birth: DateTime(1998, 4, 12),
-    weight: 78.5,
-    height: 181.0,
-    weightGoal: 72.0,
-    goal: 'Lose Weight',
-    frequency: 2,
-    gender: 'Male',
-    coach: Coach(
-      id: 1,
-      name: 'Alex Martin',
-      specialty: 'Strength & Conditioning',
-      bio: 'Passionate coach helping athletes reach their peak.',
-      createdAt: DateTime(2021, 3, 15),
-      clients: [], image: '',
-    ), createdAt: DateTime(2021, 3, 15),
-    coachID: 1,
-  );
-
-  // ── State ─────────────────────────────────────────────────────────────────
+  Client? _client;
+  bool _isLoading = true;
+  String? _error;
   bool _isEditing = false;
   File? _profileImage;
 
@@ -56,7 +39,6 @@ class _ProfileClientState extends State<ProfileClient> {
   late int _frequency;
   late String _gender;
 
-  // ── Static data ───────────────────────────────────────────────────────────
   final List<Map<String, dynamic>> _goals = [
     {'icon': Icons.local_fire_department, 'title': 'Lose Weight', 'sub': 'Burn fat, get lean'},
     {'icon': Icons.fitness_center, 'title': 'Build Muscle', 'sub': 'Gain mass & strength'},
@@ -74,15 +56,114 @@ class _ProfileClientState extends State<ProfileClient> {
     {'title': 'Athlete', 'sub': '6 – 7 days / week'},
   ];
 
-  // ── Computed ──────────────────────────────────────────────────────────────
   String get _weightLabel => _weightInKg ? 'KG' : 'LBS';
   String get _heightLabel => _heightInCm ? 'CM' : 'FT';
   double get _displayWeight => _weightInKg ? _weight : _weight * 2.205;
   double get _displayHeight => _heightInCm ? _height : _height / 30.48;
   double get _displayGoal => _weightInKg ? _weightGoal : _weightGoal * 2.205;
 
-  String _formattedDate(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')} / ${d.month.toString().padLeft(2, '0')} / ${d.year}';
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController();
+    _weightController = TextEditingController();
+    _heightController = TextEditingController();
+    _weightGoalController = TextEditingController();
+    _birthDate = DateTime.now();
+    _weight = 70.0;
+    _height = 170.0;
+    _weightGoal = 65.0;
+    _goal = 'Lose Weight';
+    _frequency = 0;
+    _gender = 'Male';
+    _loadClient();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _weightController.dispose();
+    _heightController.dispose();
+    _weightGoalController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadClient() async {
+    setState(() { _isLoading = true; _error = null; });
+
+    Map<String, dynamic> res;
+    if (widget.clientId != null) {
+      res = await ApiService.getClient(widget.clientId!);
+    } else {
+      res = await ApiService.getMe();
+    }
+
+    if (!mounted) return;
+
+    final rawClient = res['client'] ?? res['user'];
+
+    if (res['success'] == true && rawClient != null) {
+      final client = Client.fromJson(rawClient as Map<String, dynamic>);
+      _applyClient(client);
+    } else {
+      setState(() {
+        _error = res['message'] ?? 'Erreur de chargement.';
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _applyClient(Client client) {
+    setState(() {
+      _client = client;
+      _birthDate = client.birth;
+      _weight = client.weight;
+      _height = client.height;
+      _weightGoal = client.weightGoal;
+      _frequency = client.frequency.clamp(0, _frequencies.length - 1);
+      _goal = client.goal.isNotEmpty ? client.goal : 'Lose Weight';
+      _gender = client.gender.isNotEmpty ? client.gender : 'Male';
+      _nameController.text = client.name;
+      _syncControllers();
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _saveClient() async {
+    if (_client == null) return;
+    _commitMetrics();
+
+    final res = await ApiService.updateClient(_client!.id, {
+      'name': _nameController.text.trim(),
+      'birth': _birthDate.toIso8601String().split('T')[0],
+      'gender': _gender,
+      'weight': _weight,
+      'height': _height,
+      'weightGoal': _weightGoal,
+      'frequency': _frequency,
+      'goal': _goal,
+    });
+
+    if (!mounted) return;
+
+    if (res['success'] == true && res['client'] != null) {
+      _applyClient(Client.fromJson(res['client'] as Map<String, dynamic>));
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: res['success'] == true ? kNeonGreen.withOpacity(0.9) : Colors.redAccent.withOpacity(0.9),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        content: Text(
+          res['success'] == true ? 'Profil sauvegardé !' : res['message'] ?? 'Erreur.',
+          style: const TextStyle(color: kDarkBg, fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+
+  String _formattedDate(DateTime d) => '${d.day.toString().padLeft(2, '0')} / ${d.month.toString().padLeft(2, '0')} / ${d.year}';
 
   int _age(DateTime d) {
     final now = DateTime.now();
@@ -106,34 +187,6 @@ class _ProfileClientState extends State<ProfileClient> {
     if (g != null) _weightGoal = (_weightInKg ? g : g / 2.205).clamp(30, 300);
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _nameController = TextEditingController(text: _client.name);
-    _weightController = TextEditingController();
-    _heightController = TextEditingController();
-    _weightGoalController = TextEditingController();
-
-    _birthDate = _client.birth;
-    _weight = _client.weight;
-    _height = _client.height;
-    _weightGoal = _client.weightGoal;
-    _frequency = _client.frequency.clamp(0, _frequencies.length - 1);
-    _goal = _client.goal;
-    _gender = _client.gender;
-
-    _syncControllers();
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _weightController.dispose();
-    _heightController.dispose();
-    _weightGoalController.dispose();
-    super.dispose();
-  }
-
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
@@ -148,8 +201,7 @@ class _ProfileClientState extends State<ProfileClient> {
       lastDate: DateTime.now(),
       builder: (ctx, child) => Theme(
         data: ThemeData.dark().copyWith(
-          colorScheme:
-              const ColorScheme.dark(primary: kNeonGreen, onPrimary: kDarkBg),
+          colorScheme: const ColorScheme.dark(primary: kNeonGreen, onPrimary: kDarkBg),
         ),
         child: child!,
       ),
@@ -157,28 +209,24 @@ class _ProfileClientState extends State<ProfileClient> {
     if (picked != null) setState(() => _birthDate = picked);
   }
 
-  void _toggleEdit() {
-    if (_isEditing) _commitMetrics();
-    setState(() => _isEditing = !_isEditing);
-    if (!_isEditing) {
-      _syncControllers();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: kNeonGreen.withOpacity(0.9),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          content: const Text(
-            'Profile saved!',
-            style: TextStyle(color: kDarkBg, fontWeight: FontWeight.w700),
-          ),
-        ),
-      );
+  void _toggleEdit() async {
+    if (_isEditing) {
+      await _saveClient();
     } else {
       _syncControllers();
     }
+    setState(() => _isEditing = !_isEditing);
   }
 
-  // ── BUILD ─────────────────────────────────────────────────────────────────
+  Future<void> _logout() async {
+    await ApiService.logout();
+    Navigator.pushAndRemoveUntil(
+    context,
+    MaterialPageRoute(builder: (_) => LoginScreen()),
+    (route) => false,
+  );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -191,31 +239,7 @@ class _ProfileClientState extends State<ProfileClient> {
             child: Column(
               children: [
                 _buildAppBar(),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 100),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 20),
-                        _buildHeroCard(),
-                        const SizedBox(height: 16),
-                        _buildStatsRow(),
-                        const SizedBox(height: 16),
-                        _buildSection('PERSONAL INFO', _buildPersonalInfo()),
-                        const SizedBox(height: 14),
-                        _buildSection('FITNESS GOAL', _buildGoalGrid()),
-                        const SizedBox(height: 14),
-                        _buildSection('TRAINING FREQUENCY', _buildFrequencyList()),
-                        const SizedBox(height: 14),
-                        _buildSection('BODY METRICS', _buildBodyMetrics()),
-                        const SizedBox(height: 14),
-                        _buildSection('MY COACH', _buildCoachInfo()),
-                        const SizedBox(height: 30),
-                      ],
-                    ),
-                  ),
-                ),
+                Expanded(child: _buildBody()),
               ],
             ),
           ),
@@ -224,60 +248,156 @@ class _ProfileClientState extends State<ProfileClient> {
     );
   }
 
-  // ── APP BAR ───────────────────────────────────────────────────────────────
-  Widget _buildAppBar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
-      child: Row(
+  Widget _buildBody() {
+    if (_isLoading) return const Center(child: CircularProgressIndicator(color: kNeonGreen));
+
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, color: Colors.redAccent, size: 40),
+            const SizedBox(height: 12),
+            Text(_error!, style: TextStyle(color: Colors.white.withOpacity(0.6))),
+            const SizedBox(height: 16),
+            GestureDetector(
+              onTap: _loadClient,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                decoration: BoxDecoration(
+                  color: kNeonGreen.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: kNeonGreen.withOpacity(0.4)),
+                ),
+                child: const Text('Réessayer', style: TextStyle(color: kNeonGreen, fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'PROFILE',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 2,
-            ),
-          ),
-          const Spacer(),
-          GestureDetector(
-            onTap: _toggleEdit,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-              decoration: BoxDecoration(
-                color: _isEditing ? kNeonGreen : kNeonGreen.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: kNeonGreen.withOpacity(_isEditing ? 1 : 0.45)),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _isEditing ? Icons.check_rounded : Icons.edit_outlined,
-                    color: _isEditing ? kDarkBg : kNeonGreen,
-                    size: 15,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    _isEditing ? 'SAVE' : 'EDIT',
-                    style: TextStyle(
-                      color: _isEditing ? kDarkBg : kNeonGreen,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          const SizedBox(height: 20),
+          _buildHeroCard(),
+          const SizedBox(height: 16),
+          _buildStatsRow(),
+          const SizedBox(height: 16),
+          _buildSection('PERSONAL INFO', _buildPersonalInfo()),
+          const SizedBox(height: 14),
+          _buildSection('FITNESS GOAL', _buildGoalGrid()),
+          const SizedBox(height: 14),
+          _buildSection('TRAINING FREQUENCY', _buildFrequencyList()),
+          const SizedBox(height: 14),
+          _buildSection('BODY METRICS', _buildBodyMetrics()),
+          const SizedBox(height: 14),
+          _buildSection('MY COACH', _buildCoachInfo()),
+          const SizedBox(height: 20),
+          _buildLogoutButton(), // Bouton de déconnexion ajouté ici
         ],
       ),
     );
   }
 
-  // ── HERO CARD ─────────────────────────────────────────────────────────────
+  Widget _buildAppBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+      child: Row(
+        children: [
+          if (widget.clientId != null) ...[
+            GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white.withOpacity(0.1)),
+                ),
+                child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 14),
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
+          const Text(
+            'PROFILE',
+            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: 2),
+          ),
+          const Spacer(),
+          if (!_isLoading && _error == null)
+            GestureDetector(
+              onTap: _toggleEdit,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                decoration: BoxDecoration(
+                  color: _isEditing ? kNeonGreen : kNeonGreen.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: kNeonGreen.withOpacity(_isEditing ? 1 : 0.45)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _isEditing ? Icons.check_rounded : Icons.edit_outlined,
+                      color: _isEditing ? kDarkBg : kNeonGreen,
+                      size: 15,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _isEditing ? 'SAVE' : 'EDIT',
+                      style: TextStyle(
+                        color: _isEditing ? kDarkBg : kNeonGreen,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLogoutButton() {
+    return GestureDetector(
+      onTap: _logout,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.redAccent.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.redAccent, width: 1.5),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.logout, color: Colors.redAccent, size: 20),
+            SizedBox(width: 8),
+            Text(
+              'SE DÉCONNECTER',
+              style: TextStyle(
+                color: Colors.redAccent,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeroCard() {
+    final goalEntry = _goals.firstWhere((g) => g['title'] == _goal, orElse: () => _goals.first);
     final badge = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
@@ -288,20 +408,9 @@ class _ProfileClientState extends State<ProfileClient> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            _goals.firstWhere((g) => g['title'] == _goal)['icon'] as IconData,
-            color: kNeonGreen,
-            size: 12,
-          ),
+          Icon(goalEntry['icon'] as IconData, color: kNeonGreen, size: 12),
           const SizedBox(width: 5),
-          Text(
-            _goal,
-            style: const TextStyle(
-              color: kNeonGreen,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+          Text(_goal, style: const TextStyle(color: kNeonGreen, fontSize: 11, fontWeight: FontWeight.w700)),
         ],
       ),
     );
@@ -314,15 +423,9 @@ class _ProfileClientState extends State<ProfileClient> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            const Color(0xFF1A1A1A),
-            const Color(0xFF111111),
-            kNeonGreen.withOpacity(0.04),
-          ],
+          colors: [const Color(0xFF1A1A1A), const Color(0xFF111111), kNeonGreen.withOpacity(0.04)],
         ),
-        boxShadow: [
-          BoxShadow(color: kNeonGreen.withOpacity(0.07), blurRadius: 30, spreadRadius: 2)
-        ],
+        boxShadow: [BoxShadow(color: kNeonGreen.withOpacity(0.07), blurRadius: 30, spreadRadius: 2)],
       ),
       child: Row(
         children: [
@@ -337,17 +440,23 @@ class _ProfileClientState extends State<ProfileClient> {
                     shape: BoxShape.circle,
                     color: kNeonGreen.withOpacity(0.08),
                     border: Border.all(color: kNeonGreen.withOpacity(0.45), width: 2),
-                    boxShadow: [
-                      BoxShadow(color: kNeonGreen.withOpacity(0.15), blurRadius: 20)
-                    ],
+                    boxShadow: [BoxShadow(color: kNeonGreen.withOpacity(0.15), blurRadius: 20)],
                   ),
                   child: _profileImage != null
                       ? ClipOval(child: Image.file(_profileImage!, fit: BoxFit.cover))
-                      : const Icon(
-                          Icons.person_outline_rounded,
-                          color: kNeonGreen,
-                          size: 34,
-                        ),
+                      : (_client?.image.isNotEmpty == true
+                          ? ClipOval(
+                              child: Image.network(
+                                _client!.image,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const Icon(
+                                  Icons.person_outline_rounded,
+                                  color: kNeonGreen,
+                                  size: 34,
+                                ),
+                              ),
+                            )
+                          : const Icon(Icons.person_outline_rounded, color: kNeonGreen, size: 34)),
                 ),
                 if (_isEditing)
                   Positioned(
@@ -398,7 +507,6 @@ class _ProfileClientState extends State<ProfileClient> {
     );
   }
 
-  // ── SECTION BUILDER ───────────────────────────────────────────────────────
   Widget _buildSection(String title, Widget content) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -418,7 +526,6 @@ class _ProfileClientState extends State<ProfileClient> {
     );
   }
 
-  // ── STATS ROW ─────────────────────────────────────────────────────────────
   Widget _buildStatsRow() {
     return Row(
       children: [
@@ -460,11 +567,7 @@ class _ProfileClientState extends State<ProfileClient> {
         decoration: BoxDecoration(
           color: highlight ? kNeonGreen.withOpacity(0.10) : kDarkCard,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: highlight
-                ? kNeonGreen.withOpacity(0.45)
-                : Colors.white.withOpacity(0.07),
-          ),
+          border: Border.all(color: highlight ? kNeonGreen.withOpacity(0.45) : Colors.white.withOpacity(0.07)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -476,11 +579,7 @@ class _ProfileClientState extends State<ProfileClient> {
                 children: [
                   TextSpan(
                     text: value,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800),
                   ),
                   TextSpan(
                     text: ' $unit',
@@ -509,7 +608,6 @@ class _ProfileClientState extends State<ProfileClient> {
     );
   }
 
-  // ── PERSONAL INFO ─────────────────────────────────────────────────────────
   Widget _buildPersonalInfo() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -523,10 +621,7 @@ class _ProfileClientState extends State<ProfileClient> {
           _infoRow(
             icon: Icons.person_outline,
             label: 'Full Name',
-            child: _isEditing
-                ? _inlineTextField(_nameController)
-                : _infoValue(
-                    _nameController.text.isEmpty ? '—' : _nameController.text),
+            child: _isEditing ? _inlineTextField(_nameController) : _infoValue(_nameController.text.isEmpty ? '—' : _nameController.text),
           ),
           _divider(),
           _infoRow(
@@ -540,11 +635,7 @@ class _ProfileClientState extends State<ProfileClient> {
                       children: [
                         _infoValue(_formattedDate(_birthDate)),
                         const SizedBox(width: 6),
-                        Icon(
-                          Icons.edit,
-                          color: kNeonGreen.withOpacity(0.7),
-                          size: 12,
-                        ),
+                        Icon(Icons.edit, color: kNeonGreen.withOpacity(0.7), size: 12),
                       ],
                     ),
                   )
@@ -587,15 +678,9 @@ class _ProfileClientState extends State<ProfileClient> {
             margin: const EdgeInsets.only(left: 6),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: selected
-                  ? kNeonGreen.withOpacity(0.12)
-                  : Colors.white.withOpacity(0.04),
+              color: selected ? kNeonGreen.withOpacity(0.12) : Colors.white.withOpacity(0.04),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: selected
-                    ? kNeonGreen.withOpacity(0.6)
-                    : Colors.white.withOpacity(0.12),
-              ),
+              border: Border.all(color: selected ? kNeonGreen.withOpacity(0.6) : Colors.white.withOpacity(0.12)),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -607,8 +692,7 @@ class _ProfileClientState extends State<ProfileClient> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color:
-                        selected ? kNeonGreen : Colors.white.withOpacity(0.6),
+                    color: selected ? kNeonGreen : Colors.white.withOpacity(0.6),
                   ),
                 ),
               ],
@@ -619,7 +703,6 @@ class _ProfileClientState extends State<ProfileClient> {
     );
   }
 
-  // ── GOAL GRID ─────────────────────────────────────────────────────────────
   Widget _buildGoalGrid() {
     return GridView.count(
       crossAxisCount: 2,
@@ -636,18 +719,10 @@ class _ProfileClientState extends State<ProfileClient> {
             duration: const Duration(milliseconds: 200),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: selected
-                  ? kNeonGreen.withOpacity(0.10)
-                  : Colors.white.withOpacity(0.03),
+              color: selected ? kNeonGreen.withOpacity(0.10) : Colors.white.withOpacity(0.03),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: selected
-                    ? kNeonGreen.withOpacity(0.6)
-                    : Colors.white.withOpacity(0.08),
-              ),
-              boxShadow: selected
-                  ? [BoxShadow(color: kNeonGreen.withOpacity(0.12), blurRadius: 12)]
-                  : [],
+              border: Border.all(color: selected ? kNeonGreen.withOpacity(0.6) : Colors.white.withOpacity(0.08)),
+              boxShadow: selected ? [BoxShadow(color: kNeonGreen.withOpacity(0.12), blurRadius: 12)] : [],
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -664,10 +739,7 @@ class _ProfileClientState extends State<ProfileClient> {
                 ),
                 Text(
                   g['sub']!,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.white.withOpacity(0.35),
-                  ),
+                  style: TextStyle(fontSize: 10, color: Colors.white.withOpacity(0.35)),
                 ),
               ],
             ),
@@ -677,7 +749,6 @@ class _ProfileClientState extends State<ProfileClient> {
     );
   }
 
-  // ── FREQUENCY LIST ────────────────────────────────────────────────────────
   Widget _buildFrequencyList() {
     return Column(
       children: _frequencies.asMap().entries.map((entry) {
@@ -691,15 +762,9 @@ class _ProfileClientState extends State<ProfileClient> {
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: selected
-                  ? kNeonGreen.withOpacity(0.09)
-                  : Colors.white.withOpacity(0.03),
+              color: selected ? kNeonGreen.withOpacity(0.09) : Colors.white.withOpacity(0.03),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: selected
-                    ? kNeonGreen.withOpacity(0.6)
-                    : Colors.white.withOpacity(0.08),
-              ),
+              border: Border.all(color: selected ? kNeonGreen.withOpacity(0.6) : Colors.white.withOpacity(0.08)),
             ),
             child: Row(
               children: [
@@ -717,10 +782,7 @@ class _ProfileClientState extends State<ProfileClient> {
                       ),
                       Text(
                         freq['sub']!,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.white.withOpacity(0.35),
-                        ),
+                        style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.35)),
                       ),
                     ],
                   ),
@@ -733,14 +795,10 @@ class _ProfileClientState extends State<ProfileClient> {
                     shape: BoxShape.circle,
                     color: selected ? kNeonGreen : Colors.transparent,
                     border: Border.all(
-                      color: selected
-                          ? kNeonGreen
-                          : Colors.white.withOpacity(0.2),
+                      color: selected ? kNeonGreen : Colors.white.withOpacity(0.2),
                       width: 2,
                     ),
-                    boxShadow: selected
-                        ? [BoxShadow(color: kNeonGreen.withOpacity(0.5), blurRadius: 8)]
-                        : [],
+                    boxShadow: selected ? [BoxShadow(color: kNeonGreen.withOpacity(0.5), blurRadius: 8)] : [],
                   ),
                 ),
               ],
@@ -751,7 +809,6 @@ class _ProfileClientState extends State<ProfileClient> {
     );
   }
 
-  // ── BODY METRICS ──────────────────────────────────────────────────────────
   Widget _buildBodyMetrics() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -869,21 +926,13 @@ class _ProfileClientState extends State<ProfileClient> {
                 Expanded(
                   child: TextField(
                     controller: controller,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))
-                    ],
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
                     decoration: InputDecoration(
                       isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                          vertical: 8, horizontal: 6),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
                       filled: true,
                       fillColor: kNeonGreen.withOpacity(0.06),
                       suffix: Padding(
@@ -899,13 +948,11 @@ class _ProfileClientState extends State<ProfileClient> {
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
-                        borderSide:
-                            BorderSide(color: kNeonGreen.withOpacity(0.3)),
+                        borderSide: BorderSide(color: kNeonGreen.withOpacity(0.3)),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
-                        borderSide:
-                            const BorderSide(color: kNeonGreen, width: 1.5),
+                        borderSide: const BorderSide(color: kNeonGreen, width: 1.5),
                       ),
                     ),
                   ),
@@ -920,11 +967,7 @@ class _ProfileClientState extends State<ProfileClient> {
                 children: [
                   TextSpan(
                     text: displayValue,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
                   ),
                   TextSpan(
                     text: ' $unit',
@@ -942,10 +985,8 @@ class _ProfileClientState extends State<ProfileClient> {
     );
   }
 
-  // ── COACH INFO FOR CLIENT ─────────────────────────────────────────────────
   Widget _buildCoachInfo() {
-    final coach = _client.coach;
-
+    final coach = _client?.coach;
     if (coach == null) {
       return Container(
         width: double.infinity,
@@ -957,19 +998,11 @@ class _ProfileClientState extends State<ProfileClient> {
         ),
         child: Column(
           children: [
-            Icon(
-              Icons.person_search_outlined,
-              color: Colors.white.withOpacity(0.2),
-              size: 36,
-            ),
+            Icon(Icons.person_search_outlined, color: Colors.white.withOpacity(0.2), size: 36),
             const SizedBox(height: 10),
             Text(
-              'No coach assigned',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.35),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
+              'Aucun coach assigné',
+              style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -1014,13 +1047,7 @@ class _ProfileClientState extends State<ProfileClient> {
     );
   }
 
-  // ── SHARED HELPERS ────────────────────────────────────────────────────────
-  Widget _infoRow({
-    required IconData icon,
-    required String label,
-    required Widget child,
-    bool isLast = false,
-  }) {
+  Widget _infoRow({required IconData icon, required String label, required Widget child, bool isLast = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
@@ -1038,10 +1065,7 @@ class _ProfileClientState extends State<ProfileClient> {
           Expanded(
             child: Text(
               label,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.45),
-                fontSize: 12,
-              ),
+              style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 12),
             ),
           ),
           child,
@@ -1050,16 +1074,16 @@ class _ProfileClientState extends State<ProfileClient> {
     );
   }
 
-  Widget _infoValue(String text) => Text(
-        text,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-        ),
-      );
+  Widget _infoValue(String text) {
+    return Text(
+      text,
+      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+    );
+  }
 
-  Widget _divider() => Divider(color: Colors.white.withOpacity(0.05), height: 1);
+  Widget _divider() {
+    return Divider(color: Colors.white.withOpacity(0.05), height: 1);
+  }
 
   Widget _iconBtn(IconData icon, VoidCallback onTap) {
     return GestureDetector(
@@ -1077,22 +1101,16 @@ class _ProfileClientState extends State<ProfileClient> {
     );
   }
 
-  Widget _inlineTextField(TextEditingController controller,
-      {double width = 160}) {
+  Widget _inlineTextField(TextEditingController controller, {double width = 160}) {
     return SizedBox(
       width: width,
       height: 32,
       child: TextField(
         controller: controller,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-        ),
+        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
         decoration: InputDecoration(
           isDense: true,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           filled: true,
           fillColor: kNeonGreen.withOpacity(0.08),
           enabledBorder: OutlineInputBorder(
@@ -1108,8 +1126,7 @@ class _ProfileClientState extends State<ProfileClient> {
     );
   }
 
-  Widget _buildUnitToggle(
-      List<String> units, bool firstSelected, void Function(bool) onSelect) {
+  Widget _buildUnitToggle(List<String> units, bool firstSelected, void Function(bool) onSelect) {
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
@@ -1126,8 +1143,7 @@ class _ProfileClientState extends State<ProfileClient> {
             onTap: () => onSelect(isFirst),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: selected ? kNeonGreen : Colors.transparent,
                 borderRadius: BorderRadius.circular(6),
@@ -1137,9 +1153,7 @@ class _ProfileClientState extends State<ProfileClient> {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: selected
-                      ? kDarkBg
-                      : Colors.white.withOpacity(0.45),
+                  color: selected ? kDarkBg : Colors.white.withOpacity(0.45),
                 ),
               ),
             ),

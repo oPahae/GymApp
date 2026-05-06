@@ -7,7 +7,9 @@ import 'package:test_hh/temp/coaches.dart';
 import 'package:test_hh/temp/invites.dart';
 import 'package:test_hh/temp/programCoach.dart';
 import 'package:test_hh/screens/home.dart';
+import 'package:test_hh/screens/login.dart';
 import 'package:test_hh/screens/profileClient.dart';
+import 'package:test_hh/screens/register.dart';
 import 'package:test_hh/screens/welcome.dart';
 
 void main() {
@@ -25,7 +27,7 @@ class GymApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.black,
       ),
       
-      home: ProgramCoachScreen(),
+      home: LoginScreen(),
     );
   }
 }
