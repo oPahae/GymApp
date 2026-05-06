@@ -11,7 +11,7 @@ class Client {
   final String goal;
   final double weightGoal;
   final DateTime createdAt;
-  final int coachID;
+  final int? coachID;
   final String gender;
   final Coach? coach; 
 

@@ -1,18 +1,15 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:test_hh/components/header.dart';
 import 'package:test_hh/components/navbar.dart';
 import 'package:test_hh/constants/colors.dart';
+import 'package:test_hh/constants/urls.dart';
 import 'package:test_hh/models/food.dart';
 import 'package:test_hh/models/exercice.dart';
 import 'package:test_hh/models/dayProgram.dart';
-import 'package:test_hh/screens/foods.dart';       // → kAllFoods
-import 'package:test_hh/screens/bodyparts.dart';   // → kBodyParts
-
-// ─── Meal type enum ───────────────────────────────────────────────────────────
 
 enum _Meal { breakfast, lunch, dinner }
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 
 class ProgramCoachScreen extends StatefulWidget {
   final String clientName;
@@ -31,42 +28,126 @@ class ProgramCoachScreen extends StatefulWidget {
 }
 
 class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
-  // ── Constants ────────────────────────────────────────────────────────────
   static const _daysShort = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+  static const _daysFull = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-  // ── State ─────────────────────────────────────────────────────────────────
+  static const Map<String, String> _headers = {
+    'Content-Type': 'application/json',
+    'Authorization':
+        'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN6a3RqeG9pc3FsYm9ybmZjd2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5NzU1OTUsImV4cCI6MjA5MzU1MTU5NX0._SpvSTRsOBJmyxxQQZM98A0bilIvHMIlmVgB1i_CP68',
+  };
+
   int _selectedDay = 0;
-  bool _isSaving   = false;
+  bool _isSaving = false;
+  bool _loading = true;
+  String? _error;
 
-  // weekProgram[dayIndex] = { 'breakfast': [...], 'lunch': [...], 'dinner': [...], 'exercises': [...] }
-  late final List<Map<String, List<dynamic>>> _week;
+  late List<Map<String, List<dynamic>>> _week;
+  List<FoodModel> _allFoods = [];
+  List<ExerciceModel> _allExercises = [];
 
-  // Single source of truth — from mock data, replaced by API later
-  late final List<FoodModel>     _allFoods;
-  late final List<ExerciceModel> _allExercises;
-
-  // ── Init ──────────────────────────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
-    _week = List.generate(7, (_) => {
+    _week = List.generate(7, (_) => <String, List<dynamic>>{
       'breakfast': <FoodModel>[],
-      'lunch':     <FoodModel>[],
-      'dinner':    <FoodModel>[],
+      'lunch': <FoodModel>[],
+      'dinner': <FoodModel>[],
       'exercises': <ExerciceModel>[],
     });
-    _allFoods     = kAllFoods;
-    _allExercises = kBodyParts.expand((bp) => bp.exercices).toList();
+    _loadAll();
+  }
+
+  Future<void> _loadAll() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final results = await Future.wait([
+        _fetchProgram(),
+        _fetchFoods(),
+        _fetchExercises(),
+      ]);
+      if (!mounted) return;
+      setState(() { _loading = false; });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  Future<void> _fetchProgram() async {
+    final uri = Uri.parse('$kBaseUrl/api/programCoach?clientId=${widget.clientId}');
+    final res = await http.get(uri, headers: _headers);
+    if (res.statusCode != 200) throw Exception('Server error ${res.statusCode}');
+
+    final body = jsonDecode(res.body);
+    if (body is Map && body['success'] == false) {
+      throw Exception(body['message'] ?? 'API error');
+    }
+
+    final List weekData = body['data']?['week'] ?? [];
+    if (weekData.isEmpty) return;
+
+    setState(() {
+      for (int i = 0; i < 7 && i < weekData.length; i++) {
+        final d = weekData[i];
+        _week[i] = <String, List<dynamic>>{
+          'breakfast': (d['breakfastFoods'] as List?)
+                  ?.map((f) => FoodModel.fromJson(f))
+                  .toList() ?? <FoodModel>[],
+          'lunch': (d['lunchFoods'] as List?)
+                  ?.map((f) => FoodModel.fromJson(f))
+                  .toList() ?? <FoodModel>[],
+          'dinner': (d['dinnerFoods'] as List?)
+                  ?.map((f) => FoodModel.fromJson(f))
+                  .toList() ?? <FoodModel>[],
+          'exercises': (d['exercises'] as List?)
+                  ?.map((e) => ExerciceModel.fromJson(e))
+                  .toList() ?? <ExerciceModel>[],
+        };
+      }
+    });
+  }
+
+  Future<void> _fetchFoods() async {
+    final uri = Uri.parse('$kBaseUrl/api/programCoach/foods');
+    final res = await http.get(uri, headers: _headers);
+    if (res.statusCode != 200) throw Exception('Failed to fetch foods');
+
+    final body = jsonDecode(res.body);
+    if (body is Map && body['success'] == false) {
+      throw Exception(body['message'] ?? 'API error');
+    }
+
+    final List foodsData = body['data']?['foods'] ?? [];
+    setState(() {
+      _allFoods = foodsData.map((f) => FoodModel.fromJson(f)).toList();
+    });
+  }
+
+  Future<void> _fetchExercises() async {
+    final uri = Uri.parse('$kBaseUrl/api/programCoach/exercises');
+    final res = await http.get(uri, headers: _headers);
+    if (res.statusCode != 200) throw Exception('Failed to fetch exercises');
+
+    final body = jsonDecode(res.body);
+    if (body is Map && body['success'] == false) {
+      throw Exception(body['message'] ?? 'API error');
+    }
+
+    final List exData = body['data']?['exercises'] ?? [];
+    setState(() {
+      _allExercises = exData.map((e) => ExerciceModel.fromJson(e)).toList();
+    });
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-  List<FoodModel>     _foods(int day, _Meal m) => _week[day][m.name]! as List<FoodModel>;
-  List<ExerciceModel> _exes(int day)           => _week[day]['exercises']! as List<ExerciceModel>;
+  List<FoodModel> _foods(int day, _Meal m) => _week[day][m.name]! as List<FoodModel>;
+  List<ExerciceModel> _exes(int day) => _week[day]['exercises']! as List<ExerciceModel>;
 
   bool _dayHasContent(int day) =>
       _foods(day, _Meal.breakfast).isNotEmpty ||
-      _foods(day, _Meal.lunch).isNotEmpty     ||
-      _foods(day, _Meal.dinner).isNotEmpty    ||
+      _foods(day, _Meal.lunch).isNotEmpty ||
+      _foods(day, _Meal.dinner).isNotEmpty ||
       _exes(day).isNotEmpty;
 
   int get _filledDays => List.generate(7, (i) => i).where(_dayHasContent).length;
@@ -97,23 +178,88 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
   // ── Save ──────────────────────────────────────────────────────────────────
   Future<void> _save() async {
     setState(() => _isSaving = true);
-    // TODO: POST /programs  { clientId: widget.clientId, week: _week }
-    await Future.delayed(const Duration(seconds: 2));
-    if (!mounted) return;
-    setState(() => _isSaving = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: kNeonGreen,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        content: Row(children: [
-          const Icon(Icons.check_circle_rounded, color: Colors.black, size: 18),
-          const SizedBox(width: 8),
-          Text('Program saved for ${widget.clientName}!',
-              style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w700)),
-        ]),
-      ),
-    );
+    try {
+      final weekPayload = <Map<String, dynamic>>[];
+for (int i = 0; i < 7; i++) {
+  weekPayload.add({
+    'day': _daysFull[i],
+    'breakfastFoods': _foods(i, _Meal.breakfast).map((f) => {
+      'id': f.id,
+      'name': f.name,
+      'calories': f.calories,
+      'type': f.type.name,
+      'imageUrl': f.imageUrl,
+    }).toList(),
+    'lunchFoods': _foods(i, _Meal.lunch).map((f) => {
+      'id': f.id,
+      'name': f.name,
+      'calories': f.calories,
+      'type': f.type.name,
+      'imageUrl': f.imageUrl,
+    }).toList(),
+    'dinnerFoods': _foods(i, _Meal.dinner).map((f) => {
+      'id': f.id,
+      'name': f.name,
+      'calories': f.calories,
+      'type': f.type.name,
+      'imageUrl': f.imageUrl,
+    }).toList(),
+    'exercises': _exes(i).map((e) => {
+      'id': e.id,
+      'name': e.name,
+      'description': e.description,
+      'type': e.type.name,
+    }).toList(),
+  });
+}
+
+
+      final uri = Uri.parse('$kBaseUrl/api/programCoach');
+      final res = await http.post(uri, headers: _headers,
+        body: jsonEncode({'clientId': int.tryParse(widget.clientId) ?? 1, 'week': weekPayload}),
+      );
+
+      if (res.statusCode != 200) {
+        throw Exception('Server error ${res.statusCode}');
+      }
+
+      final body = jsonDecode(res.body);
+      if (body is Map && body['success'] == false) {
+        throw Exception(body['message'] ?? 'Save failed');
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: kNeonGreen,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: Row(children: [
+            const Icon(Icons.check_circle_rounded, color: Colors.black, size: 18),
+            const SizedBox(width: 8),
+            Text('Program saved for ${widget.clientName}!',
+                style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w700)),
+          ]),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: Row(children: [
+            const Icon(Icons.error_rounded, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Expanded(child: Text('Save failed: ${e.toString()}',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
+          ]),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 
   // ─── Bottom sheet: food picker ────────────────────────────────────────────
@@ -139,13 +285,11 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(children: [
-            // Handle
             Container(
               margin: const EdgeInsets.only(top: 12),
               width: 40, height: 4,
               decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
             ),
-            // Title
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
               child: Row(children: [
@@ -164,7 +308,6 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
                 ),
               ]),
             ),
-            // Search bar — same style as foods.dart
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Container(
@@ -187,7 +330,6 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            // List
             Expanded(
               child: list.isEmpty
                   ? _buildSheetEmpty('No food found')
@@ -264,7 +406,6 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
                 ),
               ]),
             ),
-            // Search bar
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Container(
@@ -287,7 +428,6 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            // Filter chips — same style as other filter rows
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -358,39 +498,86 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
         ),
       ),
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildTopBar(),
-            const SizedBox(height: 14),
-            _buildDaySelector(),
-            const SizedBox(height: 16),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(18, 0, 18, 100),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildCalorieSummary(),
-                    const SizedBox(height: 20),
-                    _buildMealSection(_Meal.breakfast),
-                    const SizedBox(height: 14),
-                    _buildMealSection(_Meal.lunch),
-                    const SizedBox(height: 14),
-                    _buildMealSection(_Meal.dinner),
-                    const SizedBox(height: 20),
-                    _buildExercisesSection(),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+        child: _loading
+            ? _buildLoading()
+            : _error != null
+                ? _buildError()
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTopBar(),
+                      const SizedBox(height: 14),
+                      _buildDaySelector(),
+                      const SizedBox(height: 16),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(18, 0, 18, 100),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildCalorieSummary(),
+                              const SizedBox(height: 20),
+                              _buildMealSection(_Meal.breakfast),
+                              const SizedBox(height: 14),
+                              _buildMealSection(_Meal.lunch),
+                              const SizedBox(height: 14),
+                              _buildMealSection(_Meal.dinner),
+                              const SizedBox(height: 20),
+                              _buildExercisesSection(),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
       ),
     );
   }
 
-  // ─── Top bar — same structure as bodyparts.dart / exercices.dart ──────────
+  Widget _buildLoading() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 28, height: 28,
+            child: CircularProgressIndicator(color: kNeonGreen, strokeWidth: 2.5),
+          ),
+          const SizedBox(height: 14),
+          Text('Loading program...',
+              style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildError() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.error_outline, size: 40, color: Colors.redAccent.withOpacity(0.6)),
+          const SizedBox(height: 12),
+          Text('Failed to load program',
+              style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 14, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 16),
+          GestureDetector(
+            onTap: _loadAll,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: kNeonGreen, width: 1.5)),
+              child: const Text('Retry',
+                  style: TextStyle(color: kNeonGreen, fontWeight: FontWeight.w700, fontSize: 13)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Top bar ──────────────────────────────────────────────────────────────
   Widget _buildTopBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
@@ -422,7 +609,6 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
             ]),
           ]),
         ),
-        // Days filled badge — same style as kBodyParts badge in bodyparts.dart
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
@@ -559,7 +745,6 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
     final color = _mealColor(meal);
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      // Section header
       Row(children: [
         Container(
           width: 30, height: 30,
@@ -621,7 +806,7 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
     ),
   );
 
-  // ─── Food card — same card style as foods.dart ────────────────────────────
+  // ─── Food card ────────────────────────────────────────────────────────────
   Widget _buildFoodCard(FoodModel food, Color accent, _Meal meal, int idx) {
     return Dismissible(
       key: Key('food_${meal.name}_${food.id}_$idx'),
@@ -642,7 +827,6 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
         decoration: BoxDecoration(color: kDarkCard, borderRadius: BorderRadius.circular(16)),
         clipBehavior: Clip.hardEdge,
         child: Row(children: [
-          // Thumbnail + right gradient — exactly like foods.dart _buildFoodCard
           SizedBox(
             width: 80, height: 80,
             child: Stack(fit: StackFit.expand, children: [
@@ -667,7 +851,6 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
               ),
             ]),
           ),
-          // Info
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -683,7 +866,6 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
               ]),
             ),
           ),
-          // Remove
           GestureDetector(
             onTap: () => setState(() => _foods(_selectedDay, meal).removeAt(idx)),
             child: Padding(
@@ -758,7 +940,7 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
     ]);
   }
 
-  // ─── Exercise card — same card style as exercices.dart ───────────────────
+  // ─── Exercise card ───────────────────────────────────────────────────────
   Widget _buildExerciseCard(ExerciceModel ex, int idx) {
     final typeColor = _exTypeColor(ex.type);
     return Dismissible(
@@ -786,7 +968,6 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
         child: SizedBox(
           height: 90,
           child: Stack(fit: StackFit.expand, children: [
-            // Background image — same as exercices.dart
             ex.image.isNotEmpty
                 ? Image.network(ex.image, fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => Container(
@@ -842,7 +1023,6 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
     );
   }
 
-  // ─── Shared type chip — same as _buildTypeChip in all pages ──────────────
   Widget _typeChip(String label, Color color) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
     decoration: BoxDecoration(
@@ -881,7 +1061,6 @@ class _FoodPickerTileState extends State<_FoodPickerTile> {
       ),
       clipBehavior: Clip.hardEdge,
       child: Row(children: [
-        // Thumbnail — same as foods.dart
         SizedBox(
           width: 64, height: 64,
           child: Stack(fit: StackFit.expand, children: [
@@ -906,7 +1085,6 @@ class _FoodPickerTileState extends State<_FoodPickerTile> {
             ),
           ]),
         ),
-        // Info
         Expanded(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -920,7 +1098,6 @@ class _FoodPickerTileState extends State<_FoodPickerTile> {
             ]),
           ),
         ),
-        // Add button
         GestureDetector(
           onTap: _added ? null : () { setState(() => _added = true); widget.onAdd(); },
           child: AnimatedContainer(
@@ -971,7 +1148,6 @@ class _ExercisePickerTileState extends State<_ExercisePickerTile> {
         ),
       ),
       clipBehavior: Clip.hardEdge,
-      // Same card structure as exercices.dart _buildExerciceCard
       child: SizedBox(
         height: 80,
         child: Stack(fit: StackFit.expand, children: [

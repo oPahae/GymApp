@@ -20,6 +20,7 @@ class ExerciceModel {
   final String description;
   final ExerciceType type;
   final List<NoteModel> notes;
+
   const ExerciceModel({
     required this.id,
     required this.name,
@@ -30,6 +31,53 @@ class ExerciceModel {
     required this.type,
     required this.notes,
   });
+
+  factory ExerciceModel.fromJson(Map<String, dynamic> json) {
+    return ExerciceModel(
+      id: (json['_id'] ?? json['id'] ?? '').toString(),
+      name: json['name'] ?? '',
+      description: json['description'] ?? '',
+      image: json['image'] ?? json['imageUrl'] ?? '',
+      video: json['video'] ?? '',
+
+      type: _parseType(json['type']),
+
+      notes: (json['notes'] as List<dynamic>?)
+              ?.map((n) => NoteModel.fromJson(n))
+              .toList() ??
+          [],
+
+      part: json['part'] != null && json['part'] is Map<String, dynamic>
+          ? BodyPartModel.fromJson(json['part'])
+          : BodyPartModel(
+              id: (json['bodyPartID'] ?? '').toString(),
+              name: json['bodyPartName'] ?? json['muscle'] ?? '',
+              imageUrl: '',
+              exercices: [],
+            ),
+    );
+  }
+
+  static ExerciceType _parseType(dynamic type) {
+    switch (type?.toString().toLowerCase()) {
+      case 'cardio':
+        return ExerciceType.cardio;
+      case 'strength':
+        return ExerciceType.strength;
+      case 'flexibility':
+        return ExerciceType.flexibility;
+      case 'balance':
+        return ExerciceType.balance;
+      case 'liquid':
+        return ExerciceType.liquid;
+      case 'grains':
+        return ExerciceType.grains;
+      case 'unit':
+        return ExerciceType.unit;
+      default:
+        return ExerciceType.cardio;
+    }
+  }
 
   String get typeLabel {
     switch (type) {
@@ -47,8 +95,6 @@ class ExerciceModel {
         return 'SUPPL.';
       case ExerciceType.unit:
         return 'UNIT';
-      default:
-        return 'EXERCICE';
     }
   }
 }
