@@ -21,11 +21,11 @@ app.use("/api/stat", statRoute);
 app.use('/api/pahae/home/', homeRoutes);
 app.use('/api/pahae/addFood/', addFoodRoutes);
 app.use('/api/pahae/addRecipe/', addRecipeRoutes);
-app.use('/api/auth', authRoutes); 
-app.use('/api/clients', clientJihane);
-app.use('/api/coaches', coachJihane);
+app.use('/api/jihane/auth', authRoutes); 
+app.use('/api/jihane/clients', clientJihane);
+app.use('/api/jihane/coaches', coachJihane);
 
 const port = 5000;
-app.listen(port, '0.0.0.0', () => {  // <-- Ajoutez '0.0.0.0'
+app.listen(port, '0.0.0.0', () => {  
     console.log("Server Started on port " + port);
 });

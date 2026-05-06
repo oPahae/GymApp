@@ -6,7 +6,7 @@ USE gymappdb;
 -- TABLE: BodyParts
 -- ======================
 CREATE TABLE BodyParts (
-    id INT PRIMARY KEY,
+    id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(255),
     image VARCHAR(255)
 );
@@ -15,20 +15,28 @@ CREATE TABLE BodyParts (
 -- TABLE: Coaches
 -- ======================
 CREATE TABLE Coaches (
-    id INT PRIMARY KEY,
+    id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(255),
     image VARCHAR(255),
-    createdAt DATE
+    createdAt DATE,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    specialty VARCHAR(255) NULL,
+    bio TEXT NULL,
+    resetToken VARCHAR(255) NULL,
+    resetTokenExpiry DATETIME NULL
 );
-
 -- ======================
 -- TABLE: Clients
 -- ======================
 CREATE TABLE Clients (
-    id INT PRIMARY KEY,
+    id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(255),
     image VARCHAR(255),
     birth DATE,
+    gender VARCHAR(255) NOT NULL DEFAULT 'Male',
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
     weight DOUBLE,
     height DOUBLE,
     frequency INT,
@@ -36,9 +44,8 @@ CREATE TABLE Clients (
     weightGoal DOUBLE,
     createdAt DATE,
     coachID INT,
-    gender VARCHAR(10) NOT NULL DEFAULT 'Male',
-    email VARCHAR(255) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL,
+    resetToken VARCHAR(255) NULL,
+    resetTokenExpiry DATETIME NULL,
     FOREIGN KEY (coachID) REFERENCES Coaches(id)
 );
 
@@ -46,7 +53,7 @@ CREATE TABLE Clients (
 -- TABLE: Exercises
 -- ======================
 CREATE TABLE Exercises (
-    id INT PRIMARY KEY,
+    id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(255),
     image VARCHAR(255),
     muscle VARCHAR(255),
@@ -60,7 +67,7 @@ CREATE TABLE Exercises (
 -- TABLE: Notes
 -- ======================
 CREATE TABLE Notes (
-    id INT PRIMARY KEY,
+    id INT PRIMARY KEY AUTO_INCREMENT,
     text VARCHAR(255),
     exerciseID INT,
     FOREIGN KEY (exerciseID) REFERENCES Exercises(id)
@@ -70,7 +77,7 @@ CREATE TABLE Notes (
 -- TABLE: Workouts
 -- ======================
 CREATE TABLE Workouts (
-    id INT PRIMARY KEY,
+    id INT PRIMARY KEY AUTO_INCREMENT,
     weekDay VARCHAR(50),
     exerciseID INT,
     clientID INT,
@@ -93,7 +100,7 @@ CREATE TABLE Invites (
 -- TABLE: Ingredients
 -- ======================
 CREATE TABLE Ingredients (
-    id INT PRIMARY KEY,
+    id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(255),
     image VARCHAR(255),
     calories INT,
@@ -104,7 +111,7 @@ CREATE TABLE Ingredients (
 -- TABLE: Recipes
 -- ======================
 CREATE TABLE Recipes (
-    id INT PRIMARY KEY,
+    id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(255),
     image VARCHAR(255),
     calories INT,
@@ -119,6 +126,7 @@ CREATE TABLE NutritionIngredients (
     ingredientID INT,
     clientID INT,
     mealtime VARCHAR(50),
+    weekDay VARCHAR(50),
     quantity INT,
     PRIMARY KEY (ingredientID, clientID, mealtime),
     FOREIGN KEY (ingredientID) REFERENCES Ingredients(id),
@@ -132,6 +140,7 @@ CREATE TABLE NutritionRecipes (
     recipeID INT,
     clientID INT,
     mealtime VARCHAR(50),
+    weekDay VARCHAR(50),
     quantity INT,
     PRIMARY KEY (recipeID, clientID, mealtime),
     FOREIGN KEY (recipeID) REFERENCES Recipes(id),
@@ -142,7 +151,7 @@ CREATE TABLE NutritionRecipes (
 -- TABLE: Days
 -- ======================
 CREATE TABLE Days (
-    id INT PRIMARY KEY,
+    id INT PRIMARY KEY AUTO_INCREMENT,
     logDate DATE,
     calories INT,
     clientID INT,
@@ -153,7 +162,7 @@ CREATE TABLE Days (
 -- TABLE: Activities
 -- ======================
 CREATE TABLE Activities (
-    id INT PRIMARY KEY,
+    id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(255),
     calories INT,
     dayID INT,
@@ -190,7 +199,7 @@ CREATE TABLE RecipesDay (
 -- TABLE: Messages
 -- ======================
 CREATE TABLE Messages (
-    id INT PRIMARY KEY,
+    id INT PRIMARY KEY AUTO_INCREMENT,
     text VARCHAR(255),
     time DATETIME,
     isUser BOOLEAN,
@@ -217,3 +226,15 @@ CREATE TABLE WeightHistory (
     FOREIGN KEY (clientID) REFERENCES Clients(id),
     UNIQUE KEY unique_day (clientID, logDate)
 );
+
+ALTER TABLE Clients 
+ADD COLUMN resetToken VARCHAR(255) NULL,
+ADD COLUMN resetTokenExpiry DATETIME NULL;
+
+ALTER TABLE Coaches 
+ADD COLUMN email VARCHAR(255) UNIQUE NOT NULL,
+ADD COLUMN password VARCHAR(255) NOT NULL,
+ADD COLUMN specialty VARCHAR(255) NULL,
+ADD COLUMN bio TEXT NULL,
+ADD COLUMN resetToken VARCHAR(255) NULL,
+ADD COLUMN resetTokenExpiry DATETIME NULL;

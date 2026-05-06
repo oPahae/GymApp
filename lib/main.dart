@@ -23,7 +23,7 @@ class GymApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.black,
       ),
       
-      home: RegisterScreen(),
+      home: LoginScreen(),
     );
   }
 }

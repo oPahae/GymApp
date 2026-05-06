@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/screens/login.dart';
+import 'package:test_hh/services/api_service.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -20,32 +21,40 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   Future<void> _handleForgotPassword() async {
-    final email = _emailController.text.trim();
+  final email = _emailController.text.trim();
 
-    if (email.isEmpty) {
-      _showSnack('Veuillez entrer votre email.', isError: true);
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
-    try {
-      // Appel à votre API pour envoyer l'email de réinitialisation
-      // Exemple: await ApiService.forgotPassword(email: email);
-      await Future.delayed(const Duration(seconds: 2)); // Simuler un appel API
-
-      if (!mounted) return;
-
-      _showSnack(
-        'Un email de réinitialisation a été envoyé à $email.',
-        isError: false,
-      );
-    } catch (e) {
-      _showSnack('Erreur lors de l\'envoi de l\'email.', isError: true);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+  if (email.isEmpty) {
+    _showSnack('Veuillez entrer votre email.', isError: true);
+    return;
   }
+
+  if (!email.contains('@')) {
+    _showSnack('Veuillez entrer un email valide.', isError: true);
+    return;
+  }
+
+  setState(() => _isLoading = true);
+
+  final result = await ApiService.forgotPassword(email: email);
+
+  if (!mounted) return;
+  setState(() => _isLoading = false);
+
+  if (result['success'] == true) {
+    _showSnack(
+      'Email envoyé ! Vérifiez votre boîte mail.',
+      isError: false,
+    );
+    // Retourner au login après 2 secondes
+    await Future.delayed(const Duration(seconds: 2));
+    if (mounted) Navigator.pop(context);
+  } else {
+    _showSnack(
+      result['message'] ?? 'Erreur lors de l\'envoi.',
+      isError: true,
+    );
+  }
+}
 
   void _showSnack(String msg, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/constants/names.dart';
+import 'package:test_hh/screens/profileClient.dart';
+import 'package:test_hh/screens/profileCoach.dart';
+import 'package:test_hh/services/api_service.dart';
 
 class Header extends StatelessWidget implements PreferredSizeWidget {
   const Header({super.key});
@@ -65,7 +68,7 @@ class Header extends StatelessWidget implements PreferredSizeWidget {
                 const SizedBox(width: 4),
                 const Icon(Icons.battery_full, color: Colors.white, size: 18),
                 const SizedBox(width: 12),
-                _buildAvatar(),
+                _buildAvatar(context), // Passer le contexte pour la navigation
               ],
             ),
           ],
@@ -111,28 +114,51 @@ class Header extends StatelessWidget implements PreferredSizeWidget {
     );
   }
 
-  Widget _buildAvatar() {
-    return Container(
-      width: 42,
-      height: 42,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: kNeonGreen, width: 2),
-        boxShadow: [
-          BoxShadow(
-            color: kNeonGreen.withOpacity(0.5),
-            blurRadius: 10,
-            spreadRadius: 1,
-          ),
-        ],
-      ),
-      child: ClipOval(
-        child: Image.network(
-          'https://images.pexels.com/photos/1681010/pexels-photo-1681010.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&dpr=1',
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Container(
-            color: Colors.grey[800],
-            child: const Icon(Icons.person, color: Colors.white, size: 22),
+  Widget _buildAvatar(BuildContext context) {
+    return GestureDetector(
+      onTap: () async {
+        final role = await ApiService.getUserRole();
+        if (role == 'client') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ProfileClient()),
+          );
+        } else if (role == 'coach') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ProfileCoach()),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Veuillez vous connecter pour accéder au profil.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      },
+      child: Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: kNeonGreen, width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: kNeonGreen.withOpacity(0.5),
+              blurRadius: 10,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: ClipOval(
+          child: Image.network(
+            'https://images.pexels.com/photos/1681010/pexels-photo-1681010.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&dpr=1',
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(
+              color: Colors.grey[800],
+              child: const Icon(Icons.person, color: Colors.white, size: 22),
+            ),
           ),
         ),
       ),

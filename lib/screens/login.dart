@@ -27,39 +27,38 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
-    final identifier = _identifierController.text.trim();
-    final password = _passwordController.text;
+  final identifier = _identifierController.text.trim();
+  final password = _passwordController.text;
 
-    if (identifier.isEmpty || password.isEmpty) {
-      _showSnack('Veuillez remplir tous les champs.', isError: true);
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
-    try {
-      final result = await ApiService.login(
-        identifier: identifier,
-        password: password,
-      );
-
-      if (!mounted) return;
-
-      if (result['success'] == true) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
-      } else {
-        final message = result['message'] ?? 'Identifiants incorrects.';
-        _showSnack(message, isError: true);
-      }
-    } catch (e) {
-      _showSnack('Erreur de connexion au serveur.', isError: true);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+  if (identifier.isEmpty || password.isEmpty) {
+    _showSnack('Veuillez remplir tous les champs.', isError: true);
+    return;
   }
+
+  setState(() => _isLoading = true);
+
+  // Un seul appel — le backend détecte client ou coach
+  final result = await ApiService.login(
+    identifier: identifier,
+    password: password,
+  );
+
+  if (!mounted) return;
+  setState(() => _isLoading = false);
+
+  if (result['success'] == true) {
+    final role = result['role'];
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const HomeScreen(), // adapter selon le rôle si besoin
+      ),
+    );
+  } else {
+    _showSnack(result['message'] ?? 'Identifiants incorrects.', isError: true);
+  }
+}
 
   void _showSnack(String msg, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
