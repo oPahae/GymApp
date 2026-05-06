@@ -44,8 +44,8 @@ CREATE TABLE Clients (
     weightGoal DOUBLE,
     createdAt DATE,
     coachID INT,
-    resetToken VARCHAR(255) NULL,
-    resetTokenExpiry DATETIME NULL,
+    gender VARCHAR(10) NOT NULL DEFAULT 'Male',
+    passwordHash VARCHAR(255) NOT NULL DEFAULT '',
     FOREIGN KEY (coachID) REFERENCES Coaches(id)
 );
 
@@ -211,7 +211,7 @@ CREATE TABLE Messages (
 -- Programme coach
 CREATE TABLE CoachPrograms (
     id INT PRIMARY KEY AUTO_INCREMENT,
-    text TEXT NOT NULL DEFAULT '',
+    text TEXT NOT NULL,
     updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     clientID INT NOT NULL UNIQUE,
     coachID INT NOT NULL,

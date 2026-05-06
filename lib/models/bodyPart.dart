@@ -12,4 +12,16 @@ class BodyPartModel {
     required this.imageUrl,
     required this.exercices,
   });
+
+  factory BodyPartModel.fromJson(Map<String, dynamic> json) {
+    return BodyPartModel(
+      id: (json['_id'] ?? json['id'] ?? '').toString(),
+      name: json['name'] ?? '',
+      imageUrl: json['image'] ?? json['imageUrl'] ?? '',
+      exercices: (json['exercices'] as List?)
+              ?.map((e) => ExerciceModel.fromJson(e))
+              .toList() ??
+          [],
+    );
+  }
 }
