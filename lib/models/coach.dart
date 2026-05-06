@@ -5,7 +5,7 @@ class Coach {
   final String name;
   final DateTime createdAt;
   final String image;
-  final List<Client> clients; 
+  final List<Client> clients;
   final String? specialty;
   final String? bio;
 
@@ -14,20 +14,20 @@ class Coach {
     required this.name,
     required this.createdAt,
     required this.image,
-    List<Client>? clients,  // ← optionnel dans le constructeur
+    List<Client>? clients,
     this.specialty,
     this.bio,
-  }) : clients = clients ?? const []; // ← valeur par défaut
+  }) : clients = clients ?? const [];
 
   factory Coach.fromJson(Map<String, dynamic> json) {
     return Coach(
       id: json['id'],
       name: json['name'],
       createdAt: DateTime.parse(json['createdAt']),
-      image: json['image'],
+      image: json['image'] ?? '',
       clients: json['clients'] != null
           ? (json['clients'] as List)
-              .map((clientJson) => Client.fromJson(clientJson))
+              .map((c) => Client.fromJson(c as Map<String, dynamic>))
               .toList()
           : [],
       specialty: json['specialty'],
@@ -35,15 +35,32 @@ class Coach {
     );
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-      'createdAt': createdAt.toIso8601String(),
-      'image': image,
-      'clients': clients.map((client) => client.toJson()).toList(),
-      'specialty': specialty,
-      'bio': bio,
-    };
-  }
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'createdAt': createdAt.toIso8601String(),
+        'image': image,
+        'clients': clients.map((c) => c.toJson()).toList(),
+        'specialty': specialty,
+        'bio': bio,
+      };
+
+  Coach copyWith({
+    int? id,
+    String? name,
+    DateTime? createdAt,
+    String? image,
+    List<Client>? clients,
+    String? specialty,
+    String? bio,
+  }) =>
+      Coach(
+        id:        id        ?? this.id,
+        name:      name      ?? this.name,
+        createdAt: createdAt ?? this.createdAt,
+        image:     image     ?? this.image,
+        clients:   clients   ?? this.clients,
+        specialty: specialty ?? this.specialty,
+        bio:       bio       ?? this.bio,
+      );
 }

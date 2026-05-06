@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/constants/urls.dart';
 import 'package:test_hh/models/food.dart';
@@ -27,7 +28,7 @@ class AddRecipeScreen extends StatefulWidget {
 class _AddRecipeScreenState extends State<AddRecipeScreen> {
   // ── Form state ──────────────────────────────────────────────────────────────
   final _nameController = TextEditingController();
-  File? _pickedImage;
+  XFile? _pickedImage;
 
   // ── Ingredient state ────────────────────────────────────────────────────────
   List<FoodModel> _catalogue = [];
@@ -111,15 +112,70 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
     }
   }
 
+  Future<String?> uploadImageToCloudinary(XFile imageFile) async {
+    try {
+      final uri = Uri.parse(
+        "https://api.cloudinary.com/v1_1/dlqcknocf/image/upload",
+      );
+
+      final request = http.MultipartRequest("POST", uri);
+
+      request.fields['upload_preset'] = 'GymApp';
+
+      if (kIsWeb) {
+        // 🌐 WEB
+        final bytes = await imageFile.readAsBytes();
+
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'file',
+            bytes,
+            filename: imageFile.name,
+          ),
+        );
+      } else {
+        // 📱 MOBILE
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'file',
+            imageFile.path,
+          ),
+        );
+      }
+
+      final response = await request.send();
+      final res = await response.stream.bytesToString();
+
+      print("Cloudinary response: $res");
+
+      final data = jsonDecode(res);
+
+      if (response.statusCode == 200) {
+        return data['secure_url'];
+      } else {
+        print("Cloudinary error: $res");
+        return null;
+      }
+    } catch (e) {
+      print("Cloudinary exception: $e");
+      return null;
+    }
+  }
+
   Future<void> _saveRecipe() async {
     if (!_canSave) return;
     setState(() => _saving = true);
 
     try {
-      // Use the first ingredient image as fallback cover if no image picked
-      final String? imageUrl =
-          _entries.isNotEmpty ? _entries.first.food.imageUrl : null;
-
+      String? imageUrl;
+      if (_pickedImage != null) {
+        imageUrl = await uploadImageToCloudinary(_pickedImage!);
+        if (imageUrl == null) {
+          throw Exception("Image upload failed");
+        }
+      } else if (_entries.isNotEmpty) {
+        imageUrl = _entries.first.food.imageUrl;
+      }
       final body = jsonEncode({
         'clientID': kExampleClientID,
         'name': _nameController.text.trim(),
@@ -153,7 +209,7 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
             backgroundColor: kNeonGreen,
           ),
         );
-        Navigator.pop(context, true); // return true = success
+        Navigator.pop(context, true);
       } else {
         final msg = decoded['message'] ?? 'Failed to save recipe.';
         _showErrorSnack(msg);
@@ -193,7 +249,10 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final xfile = await picker.pickImage(source: ImageSource.gallery);
-    if (xfile != null) setState(() => _pickedImage = File(xfile.path));
+
+    if (xfile != null) {
+      setState(() => _pickedImage = xfile);
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -319,7 +378,7 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
                   ? Stack(
                       fit: StackFit.expand,
                       children: [
-                        Image.file(_pickedImage!, fit: BoxFit.cover),
+                        Image.network(_pickedImage!.path, fit: BoxFit.cover),
                         Positioned(
                           right: 6,
                           bottom: 6,
@@ -514,7 +573,7 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
         fit: StackFit.expand,
         children: [
           if (_pickedImage != null)
-            Image.file(_pickedImage!, fit: BoxFit.cover)
+            Image.network(_pickedImage!.path, fit: BoxFit.cover)
           else if (_entries.isNotEmpty)
             Image.network(
               _entries.first.food.imageUrl,
