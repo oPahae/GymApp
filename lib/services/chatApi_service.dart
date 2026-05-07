@@ -205,6 +205,7 @@ class ChatApiService {
   }
 }
 
+
 class ApiException implements Exception {
   final int statusCode;
   final String message;
