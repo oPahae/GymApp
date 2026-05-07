@@ -53,3 +53,10 @@ build/
 # BACKEND
 backend/node_modules/
 backend/package-lock.json
+
+# Flutter ephemeral
+**/Flutter/ephemeral/
+**/.plugin_symlinks/
+
+# Android
+android/local.properties
