@@ -1,66 +1,91 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:record/record.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/models/message.dart';
+import 'package:test_hh/services/chatapi_service.dart';
+
+/// Données de session passées à l'écran.
+class ChatSession {
+  final int coachId;
+  final String coachName;
+  final String coachInitials;
+  final int clientId;
+  final String clientName;
+  final String clientInitials;
+  final String role; // 'client' | 'coach'
+
+  const ChatSession({
+    required this.coachId,
+    required this.coachName,
+    required this.coachInitials,
+    required this.clientId,
+    required this.role,
+    this.clientName = 'Client',
+    this.clientInitials = 'C',
+  });
+}
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key});
+  final ChatSession session;
+  const ChatScreen({super.key, required this.session});
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
 class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
+  ChatSession get _s => widget.session;
 
-  // ── Infos du coach ──────────────────────────────────────
-  static const String _coachName    = 'Thomas Dupont';
-  static const String _coachInitials = 'TD';
-  static const String _coachStatus  = 'En ligne • Disponible';
-
-  // ── Message state ──────────────────────────────────────
-  final _msgController   = TextEditingController();
+  final _msgController = TextEditingController();
   final _scrollController = ScrollController();
-  bool _isMicActive  = false;
-  bool _isTyping     = false; // true quand le coach est en train d'écrire
-  int  _msgIdCounter = 0;
+  bool _isLoading = true;
+  bool _isSending = false;
+  String? _errorMsg;
 
-  String _nextId() => '${++_msgIdCounter}';
+  // Audio
+  bool _isRecording = false;
+  String? _recordingPath;
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  final AudioRecorder _audioRecorder = AudioRecorder();
+  String? _currentPlayingUrl;
+  bool _isPlaying = false;
 
-  final List<ChatMessage> _messages = [
-    ChatMessage(
-      id: '0',
-      text: "Bonjour ! 👋 Je suis Thomas, votre coach personnel. Prêt à commencer notre séance ?",
-      isUser: false,
-      time: '09:00',
-      timestamp: DateTime(2025, 1, 1, 9, 0),
-      status: MessageStatus.read,
-    ),
-  ];
+  Timer? _pollTimer;
+  final List<ChatMessage> _messages = [];
 
-  // ── Call overlay state ──────────────────────────────────
-  bool _isVideoCallActive = false;
-  bool _isVoiceCallActive = false;
-
-  bool _videoMuted   = false;
-  bool _videoCamera  = true;
-  bool _videoSpeaker = true;
-
-  bool _voiceMuted   = false;
-  bool _voiceSpeaker = true;
-
-  Timer? _callTimer;
-  int   _callSeconds = 0;
-
-  // ── Animations ──────────────────────────────────────────
   late AnimationController _pulseController;
   late AnimationController _waveController;
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: true);
-    _waveController  = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))..repeat();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+    _waveController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+    _initAudio();
+    _loadMessages();
+    _pollTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _pollNewMessages(),
+    );
+  }
+
+  Future<void> _initAudio() async {
+    await _audioPlayer.setReleaseMode(ReleaseMode.stop);
+    final hasPermission = await _audioRecorder.hasPermission();
+    if (!hasPermission) {
+      _showSnack('Permission microphone requise pour enregistrer des audios.');
+    }
   }
 
   @override
@@ -69,34 +94,265 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _scrollController.dispose();
     _pulseController.dispose();
     _waveController.dispose();
-    _callTimer?.cancel();
+    _pollTimer?.cancel();
+    _audioPlayer.dispose();
+    _audioRecorder.dispose();
     super.dispose();
   }
 
-  // ── Helpers ──────────────────────────────────────────────
-  String get _callDuration {
-    final m = (_callSeconds ~/ 60).toString().padLeft(2, '0');
-    final s = (_callSeconds %  60).toString().padLeft(2, '0');
-    return '$m:$s';
-  }
+  // ─────────────────────────────────────────────
+  // MESSAGES
+  // ─────────────────────────────────────────────
 
-  void _startCallTimer() {
-    _callSeconds = 0;
-    _callTimer?.cancel();
-    _callTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _callSeconds++);
+  Future<void> _loadMessages() async {
+    setState(() {
+      _isLoading = true;
+      _errorMsg = null;
     });
+    try {
+      final raw = await ChatApiService.getMessages(
+        coachId: _s.coachId,
+        clientId: _s.clientId,
+      );
+      final msgs = raw.map(_fromJson).toList();
+      setState(() {
+        _messages.clear();
+        _messages.addAll(msgs);
+        _isLoading = false;
+      });
+      _scrollToBottom();
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMsg = e.toString();
+      });
+    }
   }
 
-  void _stopCallTimer() { _callTimer?.cancel(); _callSeconds = 0; }
+  Future<void> _pollNewMessages() async {
+    if (!mounted) return;
+    try {
+      final raw = await ChatApiService.getMessages(
+        coachId: _s.coachId,
+        clientId: _s.clientId,
+        limit: 20,
+      );
+      final incoming = raw.map(_fromJson).toList();
+      if (incoming.isEmpty) return;
 
-  void _sendMessage() {
+      final knownIds = _messages.map((m) => m.id).toSet();
+      final newMsgs = incoming.where((m) => !knownIds.contains(m.id)).toList();
+
+      if (newMsgs.isNotEmpty && mounted) {
+        setState(() => _messages.addAll(newMsgs));
+        _scrollToBottom();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _sendMessage() async {
     final text = _msgController.text.trim();
-    if (text.isEmpty) return;
-    setState(() => _messages.add(ChatMessage.fromUser(id: _nextId(), text: text)));
+    if (text.isEmpty || _isSending) return;
+
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    final tempMsg = ChatMessage(
+      id: tempId,
+      text: text,
+      isUser: true,
+      time: _formatTime(DateTime.now()),
+      timestamp: DateTime.now(),
+      status: MessageStatus.sending,
+    );
+    setState(() {
+      _messages.add(tempMsg);
+      _isSending = true;
+    });
     _msgController.clear();
     _scrollToBottom();
+
+    try {
+      final saved = await ChatApiService.sendMessage(
+        coachId: _s.coachId,
+        clientId: _s.clientId,
+        text: text,
+      );
+      final idx = _messages.indexWhere((m) => m.id == tempId);
+      if (idx != -1 && mounted) {
+        setState(() => _messages[idx] = _fromJson(saved));
+      }
+    } catch (e) {
+      final idx = _messages.indexWhere((m) => m.id == tempId);
+      if (idx != -1 && mounted) {
+        setState(() => _messages[idx] = tempMsg.copyWith(status: MessageStatus.sent));
+      }
+      _showSnack('Erreur lors de l\'envoi : $e');
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
   }
+
+  // ─────────────────────────────────────────────
+  // AUDIO RECORD
+  // ─────────────────────────────────────────────
+
+  Future<void> _startRecording() async {
+    try {
+      final hasPermission = await _audioRecorder.hasPermission();
+      if (!hasPermission) {
+        _showSnack('Permission microphone requise.');
+        return;
+      }
+
+      Directory? dir;
+      try {
+        dir = await getTemporaryDirectory();
+      } catch (_) {
+        try {
+          dir = await getApplicationDocumentsDirectory();
+        } catch (_) {
+          try {
+            dir = await getExternalStorageDirectory();
+          } catch (_) {}
+        }
+      }
+
+      if (dir == null) {
+        _showSnack('Impossible d\'accéder au stockage.');
+        return;
+      }
+
+      _recordingPath =
+          '${dir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
+
+      await _audioRecorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          bitRate: 128000,
+          sampleRate: 44100,
+        ),
+        path: _recordingPath!,
+      );
+      setState(() => _isRecording = true);
+    } catch (e) {
+      _showSnack('Erreur microphone : $e');
+      setState(() => _isRecording = false);
+    }
+  }
+
+  Future<void> _stopRecordingAndSend() async {
+    if (!_isRecording) return;
+    try {
+      final path = await _audioRecorder.stop();
+      setState(() => _isRecording = false);
+      if (path != null) {
+        await _uploadAndSendAudio(path);
+      } else {
+        _showSnack('Enregistrement vide.');
+      }
+    } catch (e) {
+      _showSnack('Erreur envoi audio : $e');
+      setState(() => _isRecording = false);
+    }
+  }
+
+  Future<void> _cancelRecording() async {
+    if (!_isRecording) return;
+    try {
+      await _audioRecorder.stop();
+      if (_recordingPath != null) {
+        final f = File(_recordingPath!);
+        if (await f.exists()) await f.delete();
+      }
+    } catch (_) {}
+    setState(() => _isRecording = false);
+    _showSnack('Enregistrement annulé.');
+  }
+
+  Future<void> _uploadAndSendAudio(String audioPath) async {
+    try {
+      final audioFile = File(audioPath);
+      final audioUrl = await ChatApiService.uploadAudio(audioFile);
+
+      final tempId = 'temp_audio_${DateTime.now().millisecondsSinceEpoch}';
+      final tempMsg = ChatMessage(
+        id: tempId,
+        text: '[Message audio]',
+        isUser: true,
+        time: _formatTime(DateTime.now()),
+        timestamp: DateTime.now(),
+        type: MessageType.audio,
+        status: MessageStatus.sending,
+        mediaUrl: audioUrl,
+      );
+      setState(() {
+        _messages.add(tempMsg);
+        _isSending = true;
+      });
+      _scrollToBottom();
+
+      final saved = await ChatApiService.sendMessage(
+        coachId: _s.coachId,
+        clientId: _s.clientId,
+        type: 'audio',
+        mediaUrl: audioUrl,
+      );
+
+      final idx = _messages.indexWhere((m) => m.id == tempId);
+      if (idx != -1 && mounted) {
+        setState(() => _messages[idx] = _fromJson(saved));
+      }
+    } catch (e) {
+      _showSnack('Erreur lors de l\'envoi du message audio: $e');
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // HELPERS
+  // ─────────────────────────────────────────────
+
+  ChatMessage _fromJson(Map<String, dynamic> json) {
+    final isUser = json['isUser'] == 1;
+    final rawTime = json['time'] ?? json['timestamp'];
+    DateTime dt;
+    try {
+      dt = DateTime.parse(rawTime.toString());
+    } catch (_) {
+      dt = DateTime.now();
+    }
+    return ChatMessage(
+      id: json['id'].toString(),
+      text: json['text'] ?? '',
+      isUser: isUser,
+      time: _formatTime(dt),
+      timestamp: dt,
+      type: _parseType(json['type'] ?? 'text'),
+      status: _parseStatus(json['status'] ?? 'sent'),
+      mediaUrl: json['mediaUrl'] as String?,
+    );
+  }
+
+  MessageType _parseType(String t) {
+    switch (t) {
+      case 'image': return MessageType.image;
+      case 'audio': return MessageType.audio;
+      case 'video': return MessageType.video;
+      default:      return MessageType.text;
+    }
+  }
+
+  MessageStatus _parseStatus(String s) {
+    switch (s) {
+      case 'sending':   return MessageStatus.sending;
+      case 'delivered': return MessageStatus.delivered;
+      case 'read':      return MessageStatus.read;
+      default:          return MessageStatus.sent;
+    }
+  }
+
+  static String _formatTime(DateTime dt) =>
+      '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -110,18 +366,64 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     });
   }
 
-  void _startVideoCall() { setState(() => _isVideoCallActive = true);  _startCallTimer(); }
-  void _endVideoCall()   { setState(() { _isVideoCallActive = false; _videoMuted = false; _videoCamera = true;  }); _stopCallTimer(); }
-  void _startVoiceCall() { setState(() => _isVoiceCallActive = true);  _startCallTimer(); }
-  void _endVoiceCall()   { setState(() { _isVoiceCallActive = false; _voiceMuted = false; _voiceSpeaker = true; }); _stopCallTimer(); }
+  void _showSnack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: Colors.red.shade800,
+      ),
+    );
+  }
 
-  // ═══════════════════════════════════════════════════════
-  //  BUILD
-  // ═══════════════════════════════════════════════════════
+  // ─────────────────────────────────────────────
+  // BUILD
+  // ─────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: kNeonGreen.withOpacity(0.12),
+                border: Border.all(
+                  color: kNeonGreen.withOpacity(0.4),
+                  width: 1.5,
+                ),
+              ),
+              child: Center(
+                child: Text(
+                  _s.role == 'coach' ? _s.clientInitials : _s.coachInitials,
+                  style: const TextStyle(
+                    color: kNeonGreen,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              _s.role == 'coach' ? _s.clientName : _s.coachName,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
       body: Stack(
         children: [
           Positioned(top: -80, right: -60, child: _glowBlob(200, 0.06)),
@@ -129,174 +431,56 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           SafeArea(
             child: Column(
               children: [
-                _buildAppBar(),
-                Expanded(child: _buildMessageList()),
-                if (_isTyping) _buildTypingIndicator(),
+                Expanded(child: _buildBody()),
                 _buildInputBar(),
               ],
             ),
           ),
-          if (_isVideoCallActive) _buildVideoCallOverlay(),
-          if (_isVoiceCallActive) _buildVoiceCallOverlay(),
         ],
       ),
     );
   }
 
-  // ── App bar ──────────────────────────────────────────────
-  Widget _buildAppBar() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      decoration: BoxDecoration(
-        color: kDarkCard,
-        border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.07))),
-      ),
-      child: Row(
-        children: [
-          // Avatar avec initiales du coach
-          Stack(children: [
-            Container(
-              width: 42, height: 42,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: kNeonGreen.withOpacity(0.12),
-                border: Border.all(color: kNeonGreen.withOpacity(0.4), width: 2),
-              ),
-              child: Center(
-                child: Text(
-                  _coachInitials,
-                  style: const TextStyle(
-                    color: kNeonGreen,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                  ),
-                ),
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: kNeonGreen),
+      );
+    }
+    if (_errorMsg != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_errorMsg!, style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: _loadMessages,
+              style: ElevatedButton.styleFrom(backgroundColor: kNeonGreen),
+              child: const Text(
+                'Réessayer',
+                style: TextStyle(color: Colors.black),
               ),
             ),
-            // Indicateur en ligne
-            Positioned(
-              bottom: 1, right: 1,
-              child: Container(
-                width: 10, height: 10,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle, color: kNeonGreen,
-                  border: Border.all(color: Colors.black, width: 1.5),
-                  boxShadow: [BoxShadow(color: kNeonGreen.withOpacity(0.7), blurRadius: 6)],
-                ),
-              ),
-            ),
-          ]),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  _coachName,
-                  style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800),
-                ),
-                AnimatedBuilder(
-                  animation: _pulseController,
-                  builder: (_, __) => Text(
-                    _coachStatus,
-                    style: TextStyle(
-                      color: kNeonGreen.withOpacity(0.6 + _pulseController.value * 0.4),
-                      fontSize: 11, fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          _callIconBtn(icon: Icons.call_outlined,    onTap: _startVoiceCall, tooltip: 'Appel vocal'),
-          const SizedBox(width: 8),
-          _callIconBtn(icon: Icons.videocam_outlined, onTap: _startVideoCall, tooltip: 'Appel vidéo'),
-        ],
-      ),
-    );
-  }
-
-  Widget _callIconBtn({required IconData icon, required VoidCallback onTap, required String tooltip}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Tooltip(
-        message: tooltip,
-        child: Container(
-          width: 38, height: 38,
-          decoration: BoxDecoration(
-            color: kNeonGreen.withOpacity(0.10),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: kNeonGreen.withOpacity(0.35)),
-          ),
-          child: Icon(icon, color: kNeonGreen, size: 18),
+          ],
         ),
-      ),
-    );
+      );
+    }
+    return _buildMessageList();
   }
 
-  // ── Typing indicator ─────────────────────────────────────
-  Widget _buildTypingIndicator() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-      child: Row(
-        children: [
-          // Mini avatar coach
-          Container(
-            width: 24, height: 24,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: kNeonGreen.withOpacity(0.12),
-              border: Border.all(color: kNeonGreen.withOpacity(0.35)),
-            ),
-            child: Center(
-              child: Text(
-                _coachInitials,
-                style: const TextStyle(color: kNeonGreen, fontSize: 8, fontWeight: FontWeight.w800),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1A1A1A),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(18), topRight: Radius.circular(18),
-                bottomLeft: Radius.circular(4), bottomRight: Radius.circular(18),
-              ),
-              border: Border.all(color: Colors.white.withOpacity(0.07)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(3, (i) => AnimatedBuilder(
-                animation: _waveController,
-                builder: (_, __) {
-                  final opacity = 0.3 + math.sin(_waveController.value * 2 * math.pi + i * 0.8).abs() * 0.7;
-                  return Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 2),
-                    width: 5, height: 5,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(opacity),
-                    ),
-                  );
-                },
-              )),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '$_coachName écrit…',
-            style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 11),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Message list ─────────────────────────────────────────
   Widget _buildMessageList() {
+    if (_messages.isEmpty) {
+      return Center(
+        child: Text(
+          'Aucun message. Envoyez le premier ! 👋',
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.3),
+            fontSize: 13,
+          ),
+        ),
+      );
+    }
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -306,16 +490,19 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildBubble(ChatMessage msg) {
+    final isCurrentUser = _s.role == 'coach' ? !msg.isUser : msg.isUser;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
-        mainAxisAlignment: msg.isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment:
+            isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          // Avatar coach (initiales)
-          if (!msg.isUser) ...[
+          if (!isCurrentUser) ...[
             Container(
-              width: 28, height: 28,
+              width: 28,
+              height: 28,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: kNeonGreen.withOpacity(0.12),
@@ -323,7 +510,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               ),
               child: Center(
                 child: Text(
-                  _coachInitials,
+                  _s.role == 'coach' ? _s.clientInitials : _s.coachInitials,
                   style: const TextStyle(
                     color: kNeonGreen,
                     fontSize: 9,
@@ -336,549 +523,452 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           ],
           Flexible(
             child: Column(
-              crossAxisAlignment: msg.isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              crossAxisAlignment: isCurrentUser
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: msg.isUser ? kNeonGreen.withOpacity(0.15) : const Color(0xFF1A1A1A),
-                    borderRadius: BorderRadius.only(
-                      topLeft:     const Radius.circular(18),
-                      topRight:    const Radius.circular(18),
-                      bottomLeft:  Radius.circular(msg.isUser ? 18 : 4),
-                      bottomRight: Radius.circular(msg.isUser ? 4  : 18),
-                    ),
-                    border: Border.all(
-                      color: msg.isUser ? kNeonGreen.withOpacity(0.4) : Colors.white.withOpacity(0.07),
-                    ),
-                    boxShadow: msg.isUser
-                        ? [BoxShadow(color: kNeonGreen.withOpacity(0.08), blurRadius: 12)]
-                        : [],
-                  ),
-                  child: Text(
-                    msg.text,
-                    style: TextStyle(
-                      color: msg.isUser ? Colors.white : Colors.white.withOpacity(0.9),
-                      fontSize: 13.5, fontWeight: FontWeight.w500, height: 1.45,
-                    ),
-                  ),
-                ),
+                msg.type == MessageType.audio
+                    ? _buildAudioMessage(msg, isCurrentUser)
+                    : Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isCurrentUser
+                              ? kNeonGreen.withOpacity(0.15)
+                              : const Color(0xFF1A1A1A),
+                          borderRadius: BorderRadius.only(
+                            topLeft: const Radius.circular(18),
+                            topRight: const Radius.circular(18),
+                            bottomLeft:
+                                Radius.circular(isCurrentUser ? 18 : 4),
+                            bottomRight:
+                                Radius.circular(isCurrentUser ? 4 : 18),
+                          ),
+                          border: Border.all(
+                            color: isCurrentUser
+                                ? kNeonGreen.withOpacity(0.4)
+                                : Colors.white.withOpacity(0.07),
+                          ),
+                        ),
+                        child: Text(
+                          msg.text,
+                          style: TextStyle(
+                            color: isCurrentUser
+                                ? Colors.white
+                                : Colors.white.withOpacity(0.9),
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w500,
+                            height: 1.45,
+                          ),
+                        ),
+                      ),
                 const SizedBox(height: 3),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(msg.time, style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 10)),
-                    if (msg.isUser) ...[const SizedBox(width: 4), _statusIcon(msg.status)],
+                    Text(
+                      msg.time,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.3),
+                        fontSize: 10,
+                      ),
+                    ),
+                    if (isCurrentUser) ...[
+                      const SizedBox(width: 4),
+                      _statusIcon(msg.status),
+                    ],
                   ],
                 ),
               ],
             ),
           ),
-          if (msg.isUser) const SizedBox(width: 8),
+          if (isCurrentUser) const SizedBox(width: 8),
         ],
       ),
     );
   }
 
-  Widget _statusIcon(MessageStatus status) {
-    switch (status) {
-      case MessageStatus.sending:   return Icon(Icons.access_time, size: 11, color: Colors.white.withOpacity(0.3));
-      case MessageStatus.sent:      return Icon(Icons.check,       size: 11, color: Colors.white.withOpacity(0.35));
-      case MessageStatus.delivered: return Icon(Icons.done_all,    size: 11, color: Colors.white.withOpacity(0.35));
-      case MessageStatus.read:      return const Icon(Icons.done_all, size: 11, color: kNeonGreen);
+  // ─────────────────────────────────────────────
+  // AUDIO MESSAGE BUBBLE
+  // ─────────────────────────────────────────────
+
+  Widget _buildAudioMessage(ChatMessage msg, bool isCurrentUser) {
+    if (msg.mediaUrl == null) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: isCurrentUser
+              ? kNeonGreen.withOpacity(0.15)
+              : const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(18),
+            topRight: const Radius.circular(18),
+            bottomLeft: Radius.circular(isCurrentUser ? 18 : 4),
+            bottomRight: Radius.circular(isCurrentUser ? 4 : 18),
+          ),
+          border: Border.all(
+            color: isCurrentUser
+                ? kNeonGreen.withOpacity(0.4)
+                : Colors.white.withOpacity(0.07),
+          ),
+        ),
+        child: Text(
+          'Audio indisponible',
+          style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13),
+        ),
+      );
     }
+
+    final isThisPlaying = _currentPlayingUrl == msg.mediaUrl && _isPlaying;
+
+    return GestureDetector(
+      onTap: () async {
+        if (isThisPlaying) {
+          await _audioPlayer.pause();
+          setState(() => _isPlaying = false);
+        } else {
+          if (_currentPlayingUrl != null &&
+              _currentPlayingUrl != msg.mediaUrl) {
+            await _audioPlayer.stop();
+          }
+          await _audioPlayer.play(UrlSource(msg.mediaUrl!));
+          setState(() {
+            _isPlaying = true;
+            _currentPlayingUrl = msg.mediaUrl;
+          });
+          _audioPlayer.onPlayerComplete.listen((_) {
+            if (mounted) {
+              setState(() {
+                _isPlaying = false;
+                _currentPlayingUrl = null;
+              });
+            }
+          });
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: isCurrentUser
+              ? kNeonGreen.withOpacity(0.15)
+              : const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(18),
+            topRight: const Radius.circular(18),
+            bottomLeft: Radius.circular(isCurrentUser ? 18 : 4),
+            bottomRight: Radius.circular(isCurrentUser ? 4 : 18),
+          ),
+          border: Border.all(
+            color: isCurrentUser
+                ? kNeonGreen.withOpacity(0.4)
+                : Colors.white.withOpacity(0.07),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: Icon(
+                isThisPlaying
+                    ? Icons.pause_circle_filled
+                    : Icons.play_circle_filled,
+                key: ValueKey(isThisPlaying),
+                color: isCurrentUser ? Colors.white : kNeonGreen,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Message audio',
+                  style: TextStyle(
+                    color: isCurrentUser
+                        ? Colors.white
+                        : Colors.white.withOpacity(0.9),
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                isThisPlaying
+                    ? AnimatedBuilder(
+                        animation: _waveController,
+                        builder: (_, __) => Row(
+                          children: List.generate(5, (i) {
+                            final h = 4.0 +
+                                (math
+                                        .sin(_waveController.value *
+                                            2 *
+                                            math.pi +
+                                            i * 0.7)
+                                        .abs() *
+                                    10);
+                            return Container(
+                              margin:
+                                  const EdgeInsets.symmetric(horizontal: 1.5),
+                              width: 3,
+                              height: h,
+                              decoration: BoxDecoration(
+                                color: isCurrentUser
+                                    ? Colors.white.withOpacity(0.8)
+                                    : kNeonGreen.withOpacity(0.8),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            );
+                          }),
+                        ),
+                      )
+                    : Row(
+                        children: List.generate(
+                          5,
+                          (i) => Container(
+                            margin:
+                                const EdgeInsets.symmetric(horizontal: 1.5),
+                            width: 3,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: isCurrentUser
+                                  ? Colors.white.withOpacity(0.3)
+                                  : Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+                      ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  // ── Input bar ────────────────────────────────────────────
+  // ─────────────────────────────────────────────
+  // INPUT BAR
+  // ─────────────────────────────────────────────
+
   Widget _buildInputBar() {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
       decoration: BoxDecoration(
         color: kDarkCard,
-        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.07))),
-      ),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTapDown:   (_) => setState(() => _isMicActive = true),
-            onTapUp:     (_) => setState(() => _isMicActive = false),
-            onTapCancel: ()  => setState(() => _isMicActive = false),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 42, height: 42,
-              decoration: BoxDecoration(
-                color: _isMicActive ? kNeonGreen : kNeonGreen.withOpacity(0.10),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: kNeonGreen.withOpacity(_isMicActive ? 1 : 0.35)),
-                boxShadow: _isMicActive
-                    ? [BoxShadow(color: kNeonGreen.withOpacity(0.5), blurRadius: 14)]
-                    : [],
-              ),
-              child: Icon(Icons.mic_outlined, color: _isMicActive ? kDarkBg : kNeonGreen, size: 18),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Container(
-              height: 44,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white.withOpacity(0.10)),
-              ),
-              child: TextField(
-                controller: _msgController,
-                style: const TextStyle(color: Colors.white, fontSize: 14),
-                onSubmitted: (_) => _sendMessage(),
-                decoration: InputDecoration(
-                  hintText: 'Envoyer un message…',
-                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 13),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          GestureDetector(
-            onTap: _sendMessage,
-            child: Container(
-              width: 42, height: 42,
-              decoration: BoxDecoration(
-                color: kNeonGreen,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [BoxShadow(color: kNeonGreen.withOpacity(0.4), blurRadius: 12)],
-              ),
-              child: const Icon(Icons.send_rounded, color: kDarkBg, size: 18),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ═══════════════════════════════════════════════════════
-  //  VIDEO CALL OVERLAY
-  // ═══════════════════════════════════════════════════════
-  Widget _buildVideoCallOverlay() {
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        color: Colors.black,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                  colors: [Color(0xFF0D0D0D), Color(0xFF050505)],
-                ),
-              ),
-            ),
-            CustomPaint(painter: _GridPainter(opacity: 0.04)),
-
-            // Avatar du coach (initiales + nom)
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedBuilder(
-                    animation: _pulseController,
-                    builder: (_, __) => Container(
-                      width: 110, height: 110,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: kNeonGreen.withOpacity(0.10),
-                        border: Border.all(
-                          color: kNeonGreen.withOpacity(0.3 + _pulseController.value * 0.4),
-                          width: 2.5,
-                        ),
-                        boxShadow: [BoxShadow(
-                          color: kNeonGreen.withOpacity(0.12 + _pulseController.value * 0.1),
-                          blurRadius: 40,
-                        )],
-                      ),
-                      child: Center(
-                        child: Text(
-                          _coachInitials,
-                          style: const TextStyle(
-                            color: kNeonGreen,
-                            fontSize: 36,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    _coachName,
-                    style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Coach personnel',
-                    style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 12),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(_callDuration, style: TextStyle(color: kNeonGreen.withOpacity(0.8), fontSize: 14)),
-                ],
-              ),
-            ),
-
-            // Badge en haut
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: Align(
-                  alignment: Alignment.topLeft,
-                  child: _callBadge(Icons.videocam, 'APPEL VIDÉO', Colors.red),
-                ),
-              ),
-            ),
-
-            // PiP : vue caméra de l'utilisateur
-            Positioned(
-              bottom: 150, right: 20,
-              child: Container(
-                width: 90, height: 120,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A1A),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: kNeonGreen.withOpacity(0.35), width: 1.5),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 12)],
-                ),
-                child: _videoCamera
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                              colors: [const Color(0xFF1A1A1A), kNeonGreen.withOpacity(0.06)],
-                            ),
-                          ),
-                          child: const Center(child: Icon(Icons.person_outline, color: Colors.white38, size: 36)),
-                        ),
-                      )
-                    : Container(
-                        decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12)),
-                        child: const Center(child: Icon(Icons.videocam_off, color: Colors.white24, size: 28)),
-                      ),
-              ),
-            ),
-
-            // Contrôles bas
-            Positioned(
-              bottom: 0, left: 0, right: 0,
-              child: SafeArea(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter, end: Alignment.topCenter,
-                      colors: [Colors.black, Colors.black.withOpacity(0)],
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _videoCtrlBtn(
-                        icon: _videoMuted ? Icons.mic_off : Icons.mic,
-                        label: _videoMuted ? 'Activer' : 'Couper',
-                        active: _videoMuted,
-                        onTap: () => setState(() => _videoMuted = !_videoMuted),
-                      ),
-                      const SizedBox(width: 16),
-                      _videoCtrlBtn(
-                        icon: _videoCamera ? Icons.videocam : Icons.videocam_off,
-                        label: _videoCamera ? 'Caméra' : 'Masqué',
-                        active: !_videoCamera,
-                        onTap: () => setState(() => _videoCamera = !_videoCamera),
-                      ),
-                      const SizedBox(width: 16),
-                      GestureDetector(
-                        onTap: _endVideoCall,
-                        child: Container(
-                          width: 64, height: 64,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle, color: Colors.red,
-                            boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.5), blurRadius: 20)],
-                          ),
-                          child: const Icon(Icons.call_end, color: Colors.white, size: 26),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      _videoCtrlBtn(
-                        icon: _videoSpeaker ? Icons.volume_up : Icons.volume_off,
-                        label: 'Haut-p.',
-                        active: !_videoSpeaker,
-                        onTap: () => setState(() => _videoSpeaker = !_videoSpeaker),
-                      ),
-                      const SizedBox(width: 16),
-                      _videoCtrlBtn(icon: Icons.flip_camera_ios_outlined, label: 'Retourner', active: false, onTap: () {}),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
+        border: Border(
+          top: BorderSide(color: Colors.white.withOpacity(0.07)),
         ),
       ),
+      child: _isRecording ? _buildRecordingBar() : _buildNormalBar(),
     );
   }
 
-  Widget _videoCtrlBtn({required IconData icon, required String label, required bool active, required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 50, height: 50,
+  Widget _buildNormalBar() {
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            height: 44,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: active ? Colors.white.withOpacity(0.15) : Colors.white.withOpacity(0.08),
-              border: Border.all(color: active ? Colors.white.withOpacity(0.4) : Colors.white.withOpacity(0.1)),
+              color: Colors.white.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white.withOpacity(0.10)),
             ),
-            child: Icon(icon, color: Colors.white, size: 20),
-          ),
-          const SizedBox(height: 4),
-          Text(label, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 10, fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
-  }
-
-  // ═══════════════════════════════════════════════════════
-  //  VOICE CALL OVERLAY
-  // ═══════════════════════════════════════════════════════
-  Widget _buildVoiceCallOverlay() {
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter, end: Alignment.bottomCenter,
-            colors: [Color(0xFF050505), Colors.black],
-          ),
-        ),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Anneaux de propagation
-            Center(
-              child: AnimatedBuilder(
-                animation: _waveController,
-                builder: (_, __) => Stack(
-                  alignment: Alignment.center,
-                  children: List.generate(4, (i) {
-                    final progress = (_waveController.value + i / 4) % 1.0;
-                    final size = 120.0 + progress * 180;
-                    return Container(
-                      width: size, height: size,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: kNeonGreen.withOpacity((1 - progress) * 0.25),
-                          width: 1.5,
-                        ),
-                      ),
-                    );
-                  }),
+            child: TextField(
+              controller: _msgController,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              onSubmitted: (_) => _sendMessage(),
+              decoration: InputDecoration(
+                hintText: 'Envoyer un message…',
+                hintStyle: TextStyle(
+                  color: Colors.white.withOpacity(0.3),
+                  fontSize: 13,
+                ),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
                 ),
               ),
             ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        // Bouton envoyer texte
+        GestureDetector(
+          onTap: _isSending ? null : _sendMessage,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: _isSending ? kNeonGreen.withOpacity(0.5) : kNeonGreen,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: kNeonGreen.withOpacity(0.4),
+                  blurRadius: 12,
+                ),
+              ],
+            ),
+            child: _isSending
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: CircularProgressIndicator(
+                      color: Colors.black,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : const Icon(Icons.send_rounded, color: kDarkBg, size: 18),
+          ),
+        ),
+        const SizedBox(width: 8),
+        // Bouton micro — appui long pour enregistrer
+        GestureDetector(
+          onLongPressStart: (_) => _startRecording(),
+          onLongPressEnd: (_) => _stopRecordingAndSend(),
+          onLongPressCancel: () => _cancelRecording(),
+          child: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: kNeonGreen.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: kNeonGreen.withOpacity(0.4)),
+            ),
+            child: const Icon(Icons.mic, color: kNeonGreen, size: 20),
+          ),
+        ),
+      ],
+    );
+  }
 
-            SafeArea(
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-                    child: Center(child: _callBadge(Icons.call, 'APPEL VOCAL', kNeonGreen)),
-                  ),
-                  const Spacer(),
-                  Column(
-                    children: [
-                      // Grand avatar avec initiales du coach
-                      AnimatedBuilder(
-                        animation: _pulseController,
-                        builder: (_, __) => Container(
-                          width: 120, height: 120,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: kNeonGreen.withOpacity(0.09),
-                            border: Border.all(
-                              color: kNeonGreen.withOpacity(0.3 + _pulseController.value * 0.45),
-                              width: 2.5,
-                            ),
-                            boxShadow: [BoxShadow(
-                              color: kNeonGreen.withOpacity(0.15 + _pulseController.value * 0.12),
-                              blurRadius: 50,
-                            )],
-                          ),
-                          child: Center(
-                            child: Text(
-                              _coachInitials,
-                              style: const TextStyle(
-                                color: kNeonGreen,
-                                fontSize: 42,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1,
-                              ),
-                            ),
-                          ),
-                        ),
+  Widget _buildRecordingBar() {
+    return Row(
+      children: [
+        GestureDetector(
+          onTap: _cancelRecording,
+          child: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.red.withOpacity(0.4)),
+            ),
+            child: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Container(
+            height: 44,
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.red.withOpacity(0.25)),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(width: 12),
+                AnimatedBuilder(
+                  animation: _pulseController,
+                  builder: (_, __) => Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.red.withOpacity(
+                        0.4 + _pulseController.value * 0.6,
                       ),
-                      const SizedBox(height: 20),
-                      const Text(
-                        _coachName,
-                        style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.3),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Coach personnel',
-                        style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        _callDuration,
-                        style: const TextStyle(color: kNeonGreen, fontSize: 15, fontWeight: FontWeight.w600, letterSpacing: 1),
-                      ),
-                      const SizedBox(height: 10),
-                      // Barres audio animées
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          ...List.generate(5, (i) => AnimatedBuilder(
-                            animation: _waveController,
-                            builder: (_, __) {
-                              final h = 8.0 + math.sin(_waveController.value * 2 * math.pi + i * 0.7).abs() * 16;
-                              return Container(
-                                margin: const EdgeInsets.symmetric(horizontal: 2),
-                                width: 3, height: h,
-                                decoration: BoxDecoration(
-                                  color: kNeonGreen.withOpacity(0.7),
-                                  borderRadius: BorderRadius.circular(2),
-                                ),
-                              );
-                            },
-                          )),
-                          const SizedBox(width: 8),
-                          Text('En communication…', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12)),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(40, 0, 40, 40),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _voiceCtrlBtn(
-                          icon: _voiceMuted ? Icons.mic_off : Icons.mic,
-                          label: _voiceMuted ? 'Activer' : 'Couper',
-                          active: _voiceMuted,
-                          onTap: () => setState(() => _voiceMuted = !_voiceMuted),
-                        ),
-                        GestureDetector(
-                          onTap: _endVoiceCall,
-                          child: Container(
-                            width: 70, height: 70,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle, color: Colors.red,
-                              boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.5), blurRadius: 24)],
-                            ),
-                            child: const Icon(Icons.call_end, color: Colors.white, size: 28),
-                          ),
-                        ),
-                        _voiceCtrlBtn(
-                          icon: _voiceSpeaker ? Icons.volume_up : Icons.volume_off,
-                          label: 'Haut-p.',
-                          active: !_voiceSpeaker,
-                          onTap: () => setState(() => _voiceSpeaker = !_voiceSpeaker),
-                        ),
-                      ],
                     ),
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 8),
+                AnimatedBuilder(
+                  animation: _waveController,
+                  builder: (_, __) => Row(
+                    children: List.generate(12, (i) {
+                      final h = 6.0 +
+                          (math
+                                  .sin(_waveController.value *
+                                      2 *
+                                      math.pi +
+                                      i * 0.5)
+                                  .abs() *
+                              14);
+                      return Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 1),
+                        width: 2.5,
+                        height: h,
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.7),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Enregistrement…',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.6),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _voiceCtrlBtn({required IconData icon, required String label, required bool active, required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 56, height: 56,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: active ? Colors.white.withOpacity(0.15) : Colors.white.withOpacity(0.06),
-              border: Border.all(color: active ? Colors.white.withOpacity(0.35) : Colors.white.withOpacity(0.1)),
-            ),
-            child: Icon(icon, color: Colors.white, size: 22),
           ),
-          const SizedBox(height: 6),
-          Text(label, style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 11, fontWeight: FontWeight.w500)),
-        ],
-      ),
+        ),
+        const SizedBox(width: 10),
+        GestureDetector(
+          onTap: _stopRecordingAndSend,
+          child: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: kNeonGreen,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(color: kNeonGreen.withOpacity(0.5), blurRadius: 14),
+              ],
+            ),
+            child: const Icon(Icons.send_rounded, color: kDarkBg, size: 18),
+          ),
+        ),
+      ],
     );
   }
 
-  // ── Shared ────────────────────────────────────────────────
-  Widget _callBadge(IconData icon, String label, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.45)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 13),
-          const SizedBox(width: 6),
-          Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
-        ],
-      ),
-    );
+  // ─────────────────────────────────────────────
+  // STATUS ICON
+  // ─────────────────────────────────────────────
+
+  Widget _statusIcon(MessageStatus status) {
+    switch (status) {
+      case MessageStatus.sending:
+        return Icon(Icons.access_time, size: 11, color: Colors.white.withOpacity(0.3));
+      case MessageStatus.sent:
+        return Icon(Icons.check, size: 11, color: Colors.white.withOpacity(0.35));
+      case MessageStatus.delivered:
+        return Icon(Icons.done_all, size: 11, color: Colors.white.withOpacity(0.35));
+      case MessageStatus.read:
+        return const Icon(Icons.done_all, size: 11, color: kNeonGreen);
+    }
   }
 
   Widget _glowBlob(double size, double opacity) => Container(
-    width: size, height: size,
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      gradient: RadialGradient(colors: [kNeonGreen.withOpacity(opacity), Colors.transparent]),
-    ),
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-//  Grid painter (fond texture appel vidéo)
-// ─────────────────────────────────────────────────────────────
-class _GridPainter extends CustomPainter {
-  final double opacity;
-  _GridPainter({required this.opacity});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = kNeonGreen.withOpacity(opacity)..strokeWidth = 0.5;
-    const step = 40.0;
-    for (double x = 0; x < size.width;  x += step) canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    for (double y = 0; y < size.height; y += step) canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _GridPainter old) => old.opacity != opacity;
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [kNeonGreen.withOpacity(opacity), Colors.transparent],
+          ),
+        ),
+      );
 }

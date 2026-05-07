@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'dart:io';
 import 'package:intl/intl.dart';
 import 'package:test_hh/constants/colors.dart';
@@ -29,7 +32,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _weightGoalController = TextEditingController();
 
   // Données du formulaire
-  File? _profileImage;
+  XFile? _profileImage; // ✅ XFile au lieu de File
   DateTime? _birthDate;
   String? _gender;
   double _weight = 70;
@@ -38,7 +41,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _weightInKg = true;
   bool _heightInCm = true;
   String _goal = 'Lose Weight';
-  int _frequency = 1; // Index par défaut (0 = Beginner)
+  int _frequency = 1;
 
   // Options pour les objectifs et fréquences
   final List<Map<String, dynamic>> _goals = [
@@ -85,7 +88,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   double get _displayHeight => _heightInCm ? _height : _height / 30.48;
   double get _displayGoalWeight => _weightInKg ? _weightGoal : _weightGoal * 2.205;
 
-  // Mise à jour des valeurs depuis les champs texte
   void _updateWeightFromText(String text) {
     final value = double.tryParse(text);
     if (value != null && value > 0) {
@@ -113,12 +115,53 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  // Sélection d'une image depuis la galerie
+  // ✅ Sélection image — retourne XFile
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked != null) {
-      setState(() => _profileImage = File(picked.path));
+      setState(() => _profileImage = picked);
+    }
+  }
+
+  // ✅ Upload vers Cloudinary — retourne l'URL sécurisée
+  Future<String?> _uploadImageToCloudinary(XFile imageFile) async {
+    try {
+      final uri = Uri.parse(
+        "https://api.cloudinary.com/v1_1/dlqcknocf/image/upload",
+      );
+
+      final request = http.MultipartRequest("POST", uri);
+      request.fields['upload_preset'] = 'GymApp';
+
+      if (kIsWeb) {
+        final bytes = await imageFile.readAsBytes();
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'file',
+            bytes,
+            filename: imageFile.name,
+          ),
+        );
+      } else {
+        request.files.add(
+          await http.MultipartFile.fromPath('file', imageFile.path),
+        );
+      }
+
+      final response = await request.send();
+      final res = await response.stream.bytesToString();
+      final data = jsonDecode(res);
+
+      if (response.statusCode == 200) {
+        return data['secure_url'] as String?;
+      } else {
+        debugPrint("Cloudinary error: $res");
+        return null;
+      }
+    } catch (e) {
+      debugPrint("Cloudinary exception: $e");
+      return null;
     }
   }
 
@@ -148,7 +191,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   // Validation des champs obligatoires
   bool _validateStep() {
     switch (_currentStep) {
-      case 0: // Étape 1: Profil
+      case 0:
         if (_nameController.text.isEmpty) {
           _showErrorSnackbar('Please enter your name.');
           return false;
@@ -170,18 +213,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
           return false;
         }
         return true;
-      case 1: // Étape 2: Stats
-        return true; // Pas de validation stricte pour les stats
-      case 2: // Étape 3: Objectif
-        return true;
-      case 3: // Étape 4: Fréquence
-        return true;
       default:
         return true;
     }
   }
 
-  // Affiche un message d'erreur
   void _showErrorSnackbar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -191,58 +227,55 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Envoi des données au backend pour l'inscription
+  // ✅ Inscription avec upload Cloudinary avant envoi backend
   Future<void> _submitRegistration() async {
-  if (!_validateStep()) return;
+    if (!_validateStep()) return;
+    setState(() => _isLoading = true);
 
-  setState(() => _isLoading = true);
+    try {
+      // 1️⃣ Upload image vers Cloudinary
+      String? imageUrl;
+      if (_profileImage != null) {
+        imageUrl = await _uploadImageToCloudinary(_profileImage!);
+        if (imageUrl == null) {
+          _showErrorSnackbar('Image upload failed. Please try again.');
+          setState(() => _isLoading = false);
+          return;
+        }
+      }
 
-  try {
-    final registrationData = {
-      'name': _nameController.text,
-      'email': _emailController.text,
-      'password': _passwordController.text,
-      'image': _profileImage?.path.split('/').last,
-      'birth': _birthDate != null ? DateFormat('yyyy-MM-dd').format(_birthDate!) : null,
-      'weight': _weightInKg ? _weight : _weight / 2.205,
-      'height': _heightInCm ? _height : _height * 30.48,
-      'frequency': _frequency + 1,
-      'goal': _goal,
-      'weightGoal': _weightInKg ? _weightGoal : _weightGoal / 2.205,
-      'gender': _gender,
-      // coachID peut être null si l'utilisateur n'a pas sélectionné de coach
-      if (_selectedCoachId != null) 'coachID': _selectedCoachId,
-    };
-
-    final response = await ApiService.register(
-      name: registrationData['name'] as String,
-      email: registrationData['email'] as String,
-      password: registrationData['password'] as String,
-      image: registrationData['image'] as String?,
-      birth: registrationData['birth'] as String?,
-      weight: registrationData['weight'] as double?,
-      height: registrationData['height'] as double?,
-      frequency: registrationData['frequency'] as int?,
-      goal: registrationData['goal'] as String,
-      weightGoal: registrationData['weightGoal'] as double?,
-      gender: registrationData['gender'] as String?,
-      coachID: registrationData['coachID'] as int?, // Peut être null
-    );
-
-    if (response['success'] == true) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
+      // 2️⃣ Envoi des données au backend avec l'URL Cloudinary
+      final response = await ApiService.register(
+        name: _nameController.text,
+        email: _emailController.text,
+        password: _passwordController.text,
+        image: imageUrl, // ✅ URL Cloudinary (ex: https://res.cloudinary.com/...)
+        birth: _birthDate != null ? DateFormat('yyyy-MM-dd').format(_birthDate!) : null,
+        weight: _weightInKg ? _weight : _weight / 2.205,
+        height: _heightInCm ? _height : _height * 30.48,
+        frequency: _frequency + 1,
+        goal: _goal,
+        weightGoal: _weightInKg ? _weightGoal : _weightGoal / 2.205,
+        gender: _gender,
+        coachID: _selectedCoachId,
       );
-    } else {
-      _showErrorSnackbar(response['message'] ?? 'Registration failed.');
+
+      if (response['success'] == true) {
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+        );
+      } else {
+        _showErrorSnackbar(response['message'] ?? 'Registration failed.');
+      }
+    } catch (e) {
+      _showErrorSnackbar('An error occurred: ${e.toString()}');
+    } finally {
+      setState(() => _isLoading = false);
     }
-  } catch (e) {
-    _showErrorSnackbar('An error occurred: ${e.toString()}');
-  } finally {
-    setState(() => _isLoading = false);
   }
-}
+
   // Navigation entre les étapes
   void _next() {
     if (_currentStep < _totalSteps - 1) {
@@ -300,7 +333,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       backgroundColor: kDarkBg,
       body: Stack(
         children: [
-          // Arrière-plan avec effets de lumière
           Positioned(
             top: -80,
             right: -60,
@@ -329,8 +361,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
             ),
           ),
-
-          // Contenu principal
           SafeArea(
             child: Column(
               children: [
@@ -353,15 +383,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ],
             ),
           ),
-
-          // Indicateur de chargement
           if (_isLoading)
             Container(
               color: Colors.black.withOpacity(0.7),
               child: const Center(
-                child: CircularProgressIndicator(
-                  color: kNeonGreen,
-                ),
+                child: CircularProgressIndicator(color: kNeonGreen),
               ),
             ),
         ],
@@ -369,7 +395,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // --- Widgets de l'UI ---
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
@@ -387,11 +412,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: Colors.white.withOpacity(0.08)),
                   ),
-                  child: const Icon(
-                    Icons.arrow_back_ios_new,
-                    color: Colors.white,
-                    size: 14,
-                  ),
+                  child: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 14),
                 ),
               ),
               const SizedBox(width: 12),
@@ -427,28 +448,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
       children: [
         RichText(
           text: TextSpan(
-            style: const TextStyle(
-              fontWeight: FontWeight.w900,
-              fontSize: 32,
-              height: 1.05,
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 32, height: 1.05),
             children: [
-              TextSpan(
-                text: _stepTitle(),
-                style: const TextStyle(color: Colors.white),
-              ),
-              TextSpan(
-                text: _stepAccent(),
-                style: const TextStyle(color: kNeonGreen),
-              ),
+              TextSpan(text: _stepTitle(), style: const TextStyle(color: Colors.white)),
+              TextSpan(text: _stepAccent(), style: const TextStyle(color: kNeonGreen)),
             ],
           ),
         ),
         const SizedBox(height: 4),
-        Text(
-          _stepSub(),
-          style: TextStyle(color: kGrayText, fontSize: 13),
-        ),
+        Text(_stepSub(), style: TextStyle(color: kGrayText, fontSize: 13)),
       ],
     );
   }
@@ -463,12 +471,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  // --- Étape 1: Profil (Nom, Email, Mot de passe, Date de naissance, Genre) ---
+  // --- Étape 1: Profil ---
   Widget _buildStep1() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Photo de profil
         Center(
           child: Column(
             children: [
@@ -482,23 +489,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: kNeonGreen.withOpacity(0.06),
-                        border: Border.all(
-                          color: kNeonGreen.withOpacity(0.35),
-                          width: 2,
-                        ),
+                        border: Border.all(color: kNeonGreen.withOpacity(0.35), width: 2),
                       ),
+                      // ✅ Affichage image selon plateforme
                       child: _profileImage != null
                           ? ClipOval(
-                              child: Image.file(
-                                _profileImage!,
-                                fit: BoxFit.cover,
-                              ),
+                              child: kIsWeb
+                                  ? Image.network(
+                                      _profileImage!.path,
+                                      fit: BoxFit.cover,
+                                      width: 90,
+                                      height: 90,
+                                    )
+                                  : Image.file(
+                                      File(_profileImage!.path),
+                                      fit: BoxFit.cover,
+                                      width: 90,
+                                      height: 90,
+                                    ),
                             )
-                          : const Icon(
-                              Icons.fitness_center,
-                              color: kNeonGreen,
-                              size: 36,
-                            ),
+                          : const Icon(Icons.fitness_center, color: kNeonGreen, size: 36),
                     ),
                     Positioned(
                       bottom: 0,
@@ -511,52 +521,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           color: kNeonGreen,
                           border: Border.all(color: kDarkBg, width: 2),
                         ),
-                        child: const Icon(
-                          Icons.add,
-                          color: kDarkBg,
-                          size: 14,
-                        ),
+                        child: const Icon(Icons.add, color: kDarkBg, size: 14),
                       ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 8),
-              Text(
-                'Tap to upload photo',
-                style: TextStyle(color: kGrayText, fontSize: 12),
-              ),
+              Text('Tap to upload photo', style: TextStyle(color: kGrayText, fontSize: 12)),
             ],
           ),
         ),
         const SizedBox(height: 20),
-
-        // Champ Nom
         _inputLabel('FULL NAME'),
-        _inputField(
-          controller: _nameController,
-          hint: 'Enter your full name',
-          icon: Icons.person_outline_rounded,
-        ),
-
-        // Champ Email
+        _inputField(controller: _nameController, hint: 'Enter your full name', icon: Icons.person_outline_rounded),
         _inputLabel('EMAIL'),
-        _inputField(
-          controller: _emailController,
-          hint: 'Enter your email',
-          icon: Icons.email_outlined,
-        ),
-
-        // Champ Mot de passe
+        _inputField(controller: _emailController, hint: 'Enter your email', icon: Icons.email_outlined),
         _inputLabel('PASSWORD'),
-        _inputField(
-          controller: _passwordController,
-          hint: 'Enter your password',
-          icon: Icons.lock_outline,
-          isPassword: true,
-        ),
-
-        // Date de naissance
+        _inputField(controller: _passwordController, hint: 'Enter your password', icon: Icons.lock_outline, isPassword: true),
         _inputLabel('DATE OF BIRTH'),
         GestureDetector(
           onTap: _pickDate,
@@ -571,20 +553,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
             child: Row(
               children: [
-                const Icon(
-                  Icons.cake_outlined,
-                  color: kGrayText,
-                  size: 18,
-                ),
+                const Icon(Icons.cake_outlined, color: kGrayText, size: 18),
                 const SizedBox(width: 10),
                 Text(
                   _birthDate != null
                       ? '${_birthDate!.day}/${_birthDate!.month}/${_birthDate!.year}'
                       : 'Select your birth date',
                   style: TextStyle(
-                    color: _birthDate != null
-                        ? Colors.white
-                        : kGrayText.withOpacity(0.55),
+                    color: _birthDate != null ? Colors.white : kGrayText.withOpacity(0.55),
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                   ),
@@ -593,15 +569,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
           ),
         ),
-
-        // Sélecteur de genre
         _inputLabel('GENDER'),
         _buildGenderSelector(),
       ],
     );
   }
 
-  // Sélecteur de genre
   Widget _buildGenderSelector() {
     return Row(
       children: [
@@ -622,18 +595,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
           height: 64,
           margin: const EdgeInsets.only(bottom: 14),
           decoration: BoxDecoration(
-            color: selected
-                ? kNeonGreen.withOpacity(0.10)
-                : Colors.white.withOpacity(0.03),
+            color: selected ? kNeonGreen.withOpacity(0.10) : Colors.white.withOpacity(0.03),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: selected
-                  ? kNeonGreen.withOpacity(0.6)
-                  : Colors.white.withOpacity(0.08),
+              color: selected ? kNeonGreen.withOpacity(0.6) : Colors.white.withOpacity(0.08),
             ),
-            boxShadow: selected
-                ? [BoxShadow(color: kNeonGreen.withOpacity(0.12), blurRadius: 12)]
-                : [],
+            boxShadow: selected ? [BoxShadow(color: kNeonGreen.withOpacity(0.12), blurRadius: 12)] : [],
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -657,19 +624,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   shape: BoxShape.circle,
                   color: selected ? kNeonGreen : Colors.transparent,
                   border: Border.all(
-                    color: selected
-                        ? kNeonGreen
-                        : Colors.white.withOpacity(0.2),
+                    color: selected ? kNeonGreen : Colors.white.withOpacity(0.2),
                     width: 2,
                   ),
-                  boxShadow: selected
-                      ? [
-                          BoxShadow(
-                            color: kNeonGreen.withOpacity(0.5),
-                            blurRadius: 6,
-                          )
-                        ]
-                      : [],
+                  boxShadow: selected ? [BoxShadow(color: kNeonGreen.withOpacity(0.5), blurRadius: 6)] : [],
                 ),
               ),
             ],
@@ -679,29 +637,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // --- Étape 2: Stats (Poids, Taille, Poids cible) ---
+  // --- Étape 2: Stats ---
   Widget _buildStep2() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Poids
         _inputLabel(
           'WEIGHT',
-          unitToggle: _buildUnitToggle(
-            ['KG', 'LBS'],
-            _weightInKg,
-            (kg) {
-              setState(() {
-                if (_weightInKg != kg) {
-                  _weight = kg ? _weight / 2.205 : _weight * 2.205;
-                  _weightGoal = kg ? _weightGoal / 2.205 : _weightGoal * 2.205;
-                  _weightInKg = kg;
-                  _weightController.text = _weight.toStringAsFixed(1);
-                  _weightGoalController.text = _weightGoal.toStringAsFixed(1);
-                }
-              });
-            },
-          ),
+          unitToggle: _buildUnitToggle(['KG', 'LBS'], _weightInKg, (kg) {
+            setState(() {
+              if (_weightInKg != kg) {
+                _weight = kg ? _weight / 2.205 : _weight * 2.205;
+                _weightGoal = kg ? _weightGoal / 2.205 : _weightGoal * 2.205;
+                _weightInKg = kg;
+                _weightController.text = _weight.toStringAsFixed(1);
+                _weightGoalController.text = _weightGoal.toStringAsFixed(1);
+              }
+            });
+          }),
         ),
         _buildNumberRowWithInput(
           controller: _weightController,
@@ -718,23 +671,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
           }),
         ),
         const SizedBox(height: 6),
-
-        // Taille
         _inputLabel(
           'HEIGHT',
-          unitToggle: _buildUnitToggle(
-            ['CM', 'FT'],
-            _heightInCm,
-            (cm) {
-              setState(() {
-                if (_heightInCm != cm) {
-                  _height = cm ? _height * 30.48 : _height / 30.48;
-                  _heightInCm = cm;
-                  _heightController.text = _height.toStringAsFixed(cm ? 0 : 1);
-                }
-              });
-            },
-          ),
+          unitToggle: _buildUnitToggle(['CM', 'FT'], _heightInCm, (cm) {
+            setState(() {
+              if (_heightInCm != cm) {
+                _height = cm ? _height * 30.48 : _height / 30.48;
+                _heightInCm = cm;
+                _heightController.text = _height.toStringAsFixed(cm ? 0 : 1);
+              }
+            });
+          }),
         ),
         _buildNumberRowWithInput(
           controller: _heightController,
@@ -752,8 +699,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
           }),
         ),
         const SizedBox(height: 6),
-
-        // Poids cible
         _inputLabel('WEIGHT GOAL'),
         _buildNumberRowWithInput(
           controller: _weightGoalController,
@@ -773,12 +718,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Sélecteur d'unités (KG/LBS ou CM/FT)
-  Widget _buildUnitToggle(
-    List<String> units,
-    bool firstSelected,
-    void Function(bool) onSelect,
-  ) {
+  Widget _buildUnitToggle(List<String> units, bool firstSelected, void Function(bool) onSelect) {
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
@@ -815,7 +755,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Champ numérique avec boutons +/-
   Widget _buildNumberRowWithInput({
     required TextEditingController controller,
     required double value,
@@ -841,11 +780,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               controller: controller,
               keyboardType: TextInputType.number,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-              ),
+              style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800),
               decoration: InputDecoration(
                 border: InputBorder.none,
                 hintText: value.toStringAsFixed(decimals),
@@ -856,14 +791,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
           Padding(
             padding: const EdgeInsets.only(right: 10),
-            child: Text(
-              unit,
-              style: TextStyle(
-                color: kGrayText,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            child: Text(unit, style: TextStyle(color: kGrayText, fontSize: 13, fontWeight: FontWeight.w600)),
           ),
           _numBtn(Icons.add, onPlus),
         ],
@@ -871,7 +799,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Boutons +/-
   Widget _numBtn(IconData icon, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
@@ -906,45 +833,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
             duration: const Duration(milliseconds: 200),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: selected
-                  ? kNeonGreen.withOpacity(0.10)
-                  : Colors.white.withOpacity(0.03),
+              color: selected ? kNeonGreen.withOpacity(0.10) : Colors.white.withOpacity(0.03),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: selected
-                    ? kNeonGreen.withOpacity(0.6)
-                    : Colors.white.withOpacity(0.08),
+                color: selected ? kNeonGreen.withOpacity(0.6) : Colors.white.withOpacity(0.08),
               ),
-              boxShadow: selected
-                  ? [
-                      BoxShadow(
-                        color: kNeonGreen.withOpacity(0.12),
-                        blurRadius: 12,
-                      )
-                    ]
-                  : [],
+              boxShadow: selected ? [BoxShadow(color: kNeonGreen.withOpacity(0.12), blurRadius: 12)] : [],
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  goal['icon']!,
-                  size: 24,
-                  color: kNeonGreen,
-                ),
+                Icon(goal['icon']!, size: 24, color: kNeonGreen),
                 const SizedBox(height: 6),
                 Text(
                   goal['title']!,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: selected ? kNeonGreen : Colors.white,
-                  ),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: selected ? kNeonGreen : Colors.white),
                 ),
-                Text(
-                  goal['sub']!,
-                  style: TextStyle(fontSize: 10, color: kGrayText),
-                ),
+                Text(goal['sub']!, style: TextStyle(fontSize: 10, color: kGrayText)),
               ],
             ),
           ),
@@ -953,7 +858,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // --- Étape 4: Fréquence d'entraînement ---
+  // --- Étape 4: Fréquence ---
   Widget _buildStep4() {
     return Column(
       children: _frequencies.asMap().entries.map((entry) {
@@ -967,14 +872,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
             margin: const EdgeInsets.only(bottom: 10),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              color: selected
-                  ? kNeonGreen.withOpacity(0.09)
-                  : Colors.white.withOpacity(0.03),
+              color: selected ? kNeonGreen.withOpacity(0.09) : Colors.white.withOpacity(0.03),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: selected
-                    ? kNeonGreen.withOpacity(0.6)
-                    : Colors.white.withOpacity(0.08),
+                color: selected ? kNeonGreen.withOpacity(0.6) : Colors.white.withOpacity(0.08),
               ),
             ),
             child: Row(
@@ -991,10 +892,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           color: selected ? kNeonGreen : Colors.white,
                         ),
                       ),
-                      Text(
-                        frequency['sub']!,
-                        style: TextStyle(fontSize: 11, color: kGrayText),
-                      ),
+                      Text(frequency['sub']!, style: TextStyle(fontSize: 11, color: kGrayText)),
                     ],
                   ),
                 ),
@@ -1006,19 +904,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     shape: BoxShape.circle,
                     color: selected ? kNeonGreen : Colors.transparent,
                     border: Border.all(
-                      color: selected
-                          ? kNeonGreen
-                          : Colors.white.withOpacity(0.2),
+                      color: selected ? kNeonGreen : Colors.white.withOpacity(0.2),
                       width: 2,
                     ),
-                    boxShadow: selected
-                        ? [
-                            BoxShadow(
-                              color: kNeonGreen.withOpacity(0.5),
-                              blurRadius: 8,
-                            )
-                          ]
-                        : [],
+                    boxShadow: selected ? [BoxShadow(color: kNeonGreen.withOpacity(0.5), blurRadius: 8)] : [],
                   ),
                 ),
               ],
@@ -1042,22 +931,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: kNeonGreen.withOpacity(0.12),
-                  border: Border.all(
-                    color: kNeonGreen.withOpacity(0.4),
-                    width: 2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: kNeonGreen.withOpacity(0.2),
-                      blurRadius: 30,
-                    )
-                  ],
+                  border: Border.all(color: kNeonGreen.withOpacity(0.4), width: 2),
+                  boxShadow: [BoxShadow(color: kNeonGreen.withOpacity(0.2), blurRadius: 30)],
                 ),
-                child: const Icon(
-                  Icons.check_rounded,
-                  color: kNeonGreen,
-                  size: 38,
-                ),
+                child: const Icon(Icons.check_rounded, color: kNeonGreen, size: 38),
               ),
               const SizedBox(height: 12),
               Text(
@@ -1078,47 +955,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
           child: Column(
             children: [
-              _summaryRow(
-                'Name',
-                _nameController.text.isEmpty ? '—' : _nameController.text,
-                Icons.person_outline,
-              ),
-              _summaryRow(
-                'Email',
-                _emailController.text.isEmpty ? '—' : _emailController.text,
-                Icons.email_outlined,
-              ),
-              _summaryRow(
-                'Gender',
-                _gender ?? '—',
-                Icons.wc_outlined,
-              ),
-              _summaryRow(
-                'Weight',
-                '${_displayWeight.toStringAsFixed(1)} ${_weightLabel.toLowerCase()}',
-                Icons.monitor_weight_outlined,
-              ),
-              _summaryRow(
-                'Height',
-                '${_displayHeight.toStringAsFixed(_heightInCm ? 0 : 1)} ${_heightLabel.toLowerCase()}',
-                Icons.height,
-              ),
-              _summaryRow(
-                'Goal Weight',
-                '${_displayGoalWeight.toStringAsFixed(1)} ${_weightLabel.toLowerCase()}',
-                Icons.flag_outlined,
-              ),
-              _summaryRow(
-                'Fitness Goal',
-                _goal,
-                Icons.track_changes_outlined,
-              ),
-              _summaryRow(
-                'Frequency',
-                _frequencies[_frequency]['title']!,
-                Icons.calendar_today_outlined,
-                isLast: true,
-              ),
+              _summaryRow('Name', _nameController.text.isEmpty ? '—' : _nameController.text, Icons.person_outline),
+              _summaryRow('Email', _emailController.text.isEmpty ? '—' : _emailController.text, Icons.email_outlined),
+              _summaryRow('Gender', _gender ?? '—', Icons.wc_outlined),
+              _summaryRow('Weight', '${_displayWeight.toStringAsFixed(1)} ${_weightLabel.toLowerCase()}', Icons.monitor_weight_outlined),
+              _summaryRow('Height', '${_displayHeight.toStringAsFixed(_heightInCm ? 0 : 1)} ${_heightLabel.toLowerCase()}', Icons.height),
+              _summaryRow('Goal Weight', '${_displayGoalWeight.toStringAsFixed(1)} ${_weightLabel.toLowerCase()}', Icons.flag_outlined),
+              _summaryRow('Fitness Goal', _goal, Icons.track_changes_outlined),
+              _summaryRow('Frequency', _frequencies[_frequency]['title']!, Icons.calendar_today_outlined, isLast: true),
             ],
           ),
         ),
@@ -1126,7 +970,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Ligne de résumé
   Widget _summaryRow(String label, String value, IconData icon, {bool isLast = false}) {
     return Column(
       children: [
@@ -1144,33 +987,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 child: Icon(icon, color: kNeonGreen, size: 16),
               ),
               const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(color: kGrayText, fontSize: 12),
-                ),
-              ),
-              Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+              Expanded(child: Text(label, style: TextStyle(color: kGrayText, fontSize: 12))),
+              Text(value, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
             ],
           ),
         ),
-        if (!isLast)
-          Divider(
-            color: Colors.white.withOpacity(0.05),
-            height: 1,
-          ),
+        if (!isLast) Divider(color: Colors.white.withOpacity(0.05), height: 1),
       ],
     );
   }
 
-  // Pied de page avec bouton
   Widget _buildFooter() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 36),
@@ -1180,9 +1006,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           backgroundColor: kNeonGreen,
           minimumSize: const Size(double.infinity, 54),
           padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           elevation: 12,
           shadowColor: kNeonGreen.withOpacity(0.45),
         ),
@@ -1190,18 +1014,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ? const SizedBox(
                 height: 24,
                 width: 24,
-                child: CircularProgressIndicator(
-                  color: kDarkBg,
-                  strokeWidth: 2,
-                ),
+                child: CircularProgressIndicator(color: kDarkBg, strokeWidth: 2),
               )
             : Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    _currentStep < _totalSteps - 1
-                        ? 'CONTINUE'
-                        : 'START MY JOURNEY',
+                    _currentStep < _totalSteps - 1 ? 'CONTINUE' : 'START MY JOURNEY',
                     style: const TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w900,
@@ -1210,18 +1029,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  const Icon(
-                    Icons.arrow_forward,
-                    color: kDarkBg,
-                    size: 18,
-                  ),
+                  const Icon(Icons.arrow_forward, color: kDarkBg, size: 18),
                 ],
               ),
       ),
     );
   }
 
-  // Widgets partagés
   Widget _inputLabel(String label, {Widget? unitToggle}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 7),
@@ -1229,12 +1043,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         children: [
           Text(
             label,
-            style: TextStyle(
-              color: kGrayText,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.2,
-            ),
+            style: TextStyle(color: kGrayText, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2),
           ),
           if (unitToggle != null) ...[const Spacer(), unitToggle],
         ],
@@ -1265,17 +1074,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
             child: TextField(
               controller: controller,
               obscureText: isPassword,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
+              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
               decoration: InputDecoration(
                 hintText: hint,
-                hintStyle: TextStyle(
-                  color: kGrayText.withOpacity(0.55),
-                  fontSize: 14,
-                ),
+                hintStyle: TextStyle(color: kGrayText.withOpacity(0.55), fontSize: 14),
                 border: InputBorder.none,
                 isDense: true,
               ),
