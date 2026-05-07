@@ -382,7 +382,7 @@ class _ProfileClientState extends State<ProfileClient> {
             Icon(Icons.logout, color: Colors.redAccent, size: 20),
             SizedBox(width: 8),
             Text(
-              'SE DÉCONNECTER',
+              'LOGOUT',
               style: TextStyle(
                 color: Colors.redAccent,
                 fontSize: 14,
@@ -1001,7 +1001,7 @@ class _ProfileClientState extends State<ProfileClient> {
             Icon(Icons.person_search_outlined, color: Colors.white.withOpacity(0.2), size: 36),
             const SizedBox(height: 10),
             Text(
-              'Aucun coach assigné',
+              'No coach yet',
               style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ],

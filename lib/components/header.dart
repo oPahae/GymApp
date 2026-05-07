@@ -3,14 +3,190 @@ import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/constants/names.dart';
 import 'package:test_hh/screens/profileClient.dart';
 import 'package:test_hh/screens/profileCoach.dart';
+import 'package:test_hh/screens/chat.dart';
+import 'package:test_hh/screens/coachConv.dart';
 import 'package:test_hh/services/api_service.dart';
+import 'package:test_hh/models/client.dart';
+import 'package:test_hh/models/coach.dart';
 
-class Header extends StatelessWidget implements PreferredSizeWidget {
+class Header extends StatefulWidget implements PreferredSizeWidget {
   const Header({super.key});
 
   @override
   Size get preferredSize => const Size.fromHeight(62);
 
+  @override
+  State<Header> createState() => _HeaderState();
+}
+
+class _HeaderState extends State<Header> {
+  bool _chatLoading = false;
+  String? _userImageUrl;
+  bool _isLoadingImage = true;
+  bool _hasCoach = false; // Variable pour vérifier si le client a un coach
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserImage();
+    _checkIfClientHasCoach(); // Vérifier si le client a un coach
+  }
+
+  // Vérifier si le client a un coach assigné
+  Future<void> _checkIfClientHasCoach() async {
+    try {
+      final role = await ApiService.getUserRole();
+      if (role == 'client') {
+        final data = await ApiService.getMe();
+        if (data['success'] == true) {
+          final user = data['user'] ?? data['client'];
+          final coach = user?['coach'] as Map<String, dynamic>?;
+          setState(() => _hasCoach = coach != null && coach['id'] != null);
+        }
+      }
+    } catch (e) {
+      // En cas d'erreur, on suppose qu'il n'y a pas de coach
+      setState(() => _hasCoach = false);
+    }
+  }
+
+  // Charger l'image de l'utilisateur (client ou coach)
+  // ✅ APRÈS (corrigé)
+Future<void> _loadUserImage() async {
+  setState(() => _isLoadingImage = true);
+  try {
+    final role = await ApiService.getUserRole();
+    if (role == 'client') {
+      final data = await ApiService.getMe();
+      if (data['success'] == true) {
+        final user = data['client'] ?? data['user']; // ← fallback ajouté
+        if (user != null) {
+          setState(() => _userImageUrl = user['image'] as String?);
+        }
+      }
+    } else if (role == 'coach') {
+      final data = await ApiService.getMyCoachProfile();
+      if (data['success'] == true) {
+        final coach = data['coach'] as Map<String, dynamic>?;
+        if (coach != null) {
+          setState(() => _userImageUrl = coach['image'] as String?);
+        }
+      }
+    }
+  } catch (e) {
+    // Ignorer l'erreur
+  } finally {
+    if (mounted) setState(() => _isLoadingImage = false);
+  }
+}
+
+  // ══════════════════════════════════════════════════════
+  //  NAVIGATION CHAT
+  // ══════════════════════════════════════════════════════
+  Future<void> _onChatTap() async {
+    if (_chatLoading) return;
+
+    final role = await ApiService.getUserRole();
+    if (role == null) {
+      _showSnack('Veuillez vous connecter pour accéder au chat.');
+      return;
+    }
+
+    setState(() => _chatLoading = true);
+    try {
+      if (role == 'client') {
+        await _navigateAsClient();
+      } else if (role == 'coach') {
+        await _navigateAsCoach();
+      }
+    } finally {
+      if (mounted) setState(() => _chatLoading = false);
+    }
+  }
+
+  Future<void> _navigateAsClient() async {
+    final data = await ApiService.getMe();
+    if (data['success'] != true) {
+      _showSnack('Impossible de récupérer votre profil.');
+      return;
+    }
+
+    final user = data['user'] as Map<String, dynamic>?;
+    final clientId = user?['id'] as int?;
+    final coach = user?['coach'] as Map<String, dynamic>?;
+    final coachId = coach?['id'] as int?;
+    final coachName = (coach?['name'] as String?) ?? 'Mon Coach';
+
+    if (clientId == null || coachId == null) {
+      _showSnack('Aucun coach assigné à votre compte.');
+      return;
+    }
+
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          session: ChatSession(
+            coachId: coachId,
+            coachName: coachName,
+            coachInitials: _initials(coachName),
+            clientId: clientId,
+            role: 'client',
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _navigateAsCoach() async {
+    final data = await ApiService.getMyCoachProfile();
+    if (data['success'] != true) {
+      _showSnack('Impossible de récupérer votre profil coach.');
+      return;
+    }
+
+    final coach = data['coach'] as Map<String, dynamic>?;
+    final coachId = coach?['id'] as int?;
+    final coachName = (coach?['name'] as String?) ?? 'Coach';
+
+    if (coachId == null) {
+      _showSnack('Impossible de récupérer votre identifiant.');
+      return;
+    }
+
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CoachConversationsScreen(
+          coachId: coachId,
+          coachName: coachName,
+        ),
+      ),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════
+  //  HELPERS
+  // ══════════════════════════════════════════════════════
+  void _showSnack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: Colors.red.shade800),
+    );
+  }
+
+  static String _initials(String name) {
+    final parts = name.trim().split(' ');
+    if (parts.length >= 2) return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    if (parts[0].length >= 2) return parts[0].substring(0, 2).toUpperCase();
+    return parts[0][0].toUpperCase();
+  }
+
+  // ══════════════════════════════════════════════════════
+  //  BUILD
+  // ══════════════════════════════════════════════════════
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -21,7 +197,9 @@ class Header extends StatelessWidget implements PreferredSizeWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _buildChatButton(),
+            
+              if (_hasCoach) _buildChatButton(),
+              if (!_hasCoach) const SizedBox(width: 42), // Espace vide si pas de coach
             RichText(
               text: TextSpan(
                 children: [
@@ -54,7 +232,7 @@ class Header extends StatelessWidget implements PreferredSizeWidget {
                 const SizedBox(width: 4),
                 const Icon(Icons.battery_full, color: Colors.white, size: 18),
                 const SizedBox(width: 12),
-                _buildAvatar(context), // Passer le contexte pour la navigation
+                _buildAvatar(context),
               ],
             ),
           ],
@@ -64,63 +242,62 @@ class Header extends StatelessWidget implements PreferredSizeWidget {
   }
 
   Widget _buildChatButton() {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: kDarkCard,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white12, width: 1),
-          ),
-          child: const Icon(Icons.chat_bubble_outline, color: Colors.white, size: 20),
-        ),
-        Positioned(
-          top: -3,
-          right: -3,
-          child: Container(
-            width: 10,
-            height: 10,
+    return GestureDetector(
+      onTap: _onChatTap,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
             decoration: BoxDecoration(
-              color: kNeonGreen,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: kNeonGreen.withOpacity(0.7),
-                  blurRadius: 6,
-                  spreadRadius: 1,
-                ),
-              ],
+              color: kDarkCard,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white12, width: 1),
             ),
+            child: _chatLoading
+                ? const Padding(
+                    padding: EdgeInsets.all(11),
+                    child: CircularProgressIndicator(color: kNeonGreen, strokeWidth: 2),
+                  )
+                : const Icon(Icons.chat_bubble_outline, color: Colors.white, size: 20),
           ),
-        ),
-      ],
+          if (!_chatLoading)
+            Positioned(
+              top: -3,
+              right: -3,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: kNeonGreen,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: kNeonGreen.withOpacity(0.7),
+                      blurRadius: 6,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
+  // Affichage de l'avatar avec l'image de l'utilisateur
   Widget _buildAvatar(BuildContext context) {
     return GestureDetector(
       onTap: () async {
         final role = await ApiService.getUserRole();
         if (role == 'client') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const ProfileClient()),
-          );
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileClient()));
         } else if (role == 'coach') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const ProfileCoach()),
-          );
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileCoach()));
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Veuillez vous connecter pour accéder au profil.'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          _showSnack('Veuillez vous connecter pour accéder au profil.');
         }
       },
       child: Container(
@@ -138,14 +315,31 @@ class Header extends StatelessWidget implements PreferredSizeWidget {
           ],
         ),
         child: ClipOval(
-          child: Image.network(
-            'https://images.pexels.com/photos/1681010/pexels-photo-1681010.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&dpr=1',
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(
-              color: Colors.grey[800],
-              child: const Icon(Icons.person, color: Colors.white, size: 22),
-            ),
-          ),
+          child: _isLoadingImage
+              ? Container(
+                  color: Colors.grey[800],
+                  child: const Center(child: CircularProgressIndicator(color: kNeonGreen, strokeWidth: 2)),
+                )
+              : (_userImageUrl != null && _userImageUrl!.isNotEmpty
+                  ? Image.network(
+                      _userImageUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: Colors.grey[800],
+                        child: const Icon(Icons.person, color: Colors.white, size: 22),
+                      ),
+                      loadingBuilder: (_, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(
+                          color: Colors.grey[800],
+                          child: const Center(child: CircularProgressIndicator(color: kNeonGreen, strokeWidth: 2)),
+                        );
+                      },
+                    )
+                  : Container(
+                      color: Colors.grey[800],
+                      child: const Icon(Icons.person, color: Colors.white, size: 22),
+                    )),
         ),
       ),
     );
