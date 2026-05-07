@@ -1,31 +1,11 @@
 import express from 'express';
 import db from '../../config/db.js';
 import { authMiddleware } from './auth.js';
-import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
 
 const router = express.Router();
 
 // Toutes les routes nécessitent un JWT valide
 router.use(authMiddleware);
-
-// Configuration de Multer pour les uploads audio
-const audioStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../../uploads/audios');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, `audio-${uniqueSuffix}${path.extname(file.originalname)}`);
-  },
-});
-
-const uploadAudio = multer({ storage: audioStorage });
 
 // ─────────────────────────────────────────────────────────────────
 // RÈGLES MÉTIER :
@@ -141,24 +121,6 @@ router.get('/conversations', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
-// POST /api/jihane/chat/upload-audio
-// Upload un fichier audio et retourne son URL
-// ─────────────────────────────────────────────
-router.post('/upload-audio', uploadAudio.single('audio'), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ success: false, message: 'Aucun fichier audio fourni.' });
-  }
-
-  try {
-    const audioUrl = `${req.protocol}://${req.get('host')}/uploads/audios/${req.file.filename}`;
-    res.json({ success: true, audioUrl });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Erreur lors de l\'upload du fichier audio.' });
-  }
-});
-
-// ─────────────────────────────────────────────
 // GET /api/jihane/chat/messages/:coachId/:clientId
 // ─────────────────────────────────────────────
 router.get('/messages/:coachId/:clientId', async (req, res) => {
@@ -175,14 +137,14 @@ router.get('/messages/:coachId/:clientId', async (req, res) => {
     let params;
 
     if (before) {
-      query = `SELECT id, text, time, isUser, type, status, mediaUrl
+      query = `SELECT id, text, time, isUser, status
                FROM Messages
                WHERE coachID = ? AND clientID = ? AND id < ?
                ORDER BY time DESC
                LIMIT ?`;
       params = [coachId, clientId, before, limit];
     } else {
-      query = `SELECT id, text, time, isUser, type, status, mediaUrl
+      query = `SELECT id, text, time, isUser, status
                FROM Messages
                WHERE coachID = ? AND clientID = ?
                ORDER BY time DESC
@@ -213,22 +175,17 @@ router.get('/messages/:coachId/:clientId', async (req, res) => {
 
 // ─────────────────────────────────────────────
 // POST /api/jihane/chat/messages
-// Envoyer un message (texte ou audio)
+// Envoyer un message texte
 // ─────────────────────────────────────────────
 router.post('/messages', async (req, res) => {
-  const { coachId, clientId, text, type = 'text', mediaUrl } = req.body;
+  const { coachId, clientId, text } = req.body;
 
   if (!coachId || !clientId) {
     return res.status(400).json({ success: false, message: 'coachId et clientId requis.' });
   }
 
-  if (!text && !mediaUrl) {
-    return res.status(400).json({ success: false, message: 'Contenu du message requis (texte ou mediaUrl).' });
-  }
-
-  const validTypes = ['text', 'audio', 'image', 'video'];
-  if (!validTypes.includes(type)) {
-    return res.status(400).json({ success: false, message: 'Type de message invalide.' });
+  if (!text || !text.trim()) {
+    return res.status(400).json({ success: false, message: 'Le texte du message est requis.' });
   }
 
   const coachIdInt  = parseInt(coachId);
@@ -241,13 +198,13 @@ router.post('/messages', async (req, res) => {
 
   try {
     const [result] = await db.query(
-      `INSERT INTO Messages (text, time, isUser, type, status, mediaUrl, coachID, clientID)
-       VALUES (?, NOW(), ?, ?, 'sent', ?, ?, ?)`,
-      [text || null, isUser, type, mediaUrl || null, coachIdInt, clientIdInt]
+      `INSERT INTO Messages (text, time, isUser, type, status, coachID, clientID)
+       VALUES (?, NOW(), ?, 'text', 'sent', ?, ?)`,
+      [text.trim(), isUser, coachIdInt, clientIdInt]
     );
 
     const [rows] = await db.query(
-      'SELECT id, text, time, isUser, type, status, mediaUrl FROM Messages WHERE id = ?',
+      'SELECT id, text, time, isUser, status FROM Messages WHERE id = ?',
       [result.insertId]
     );
 

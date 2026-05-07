@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:test_hh/constants/urls.dart';
@@ -60,13 +59,11 @@ class ChatApiService {
     return List<Map<String, dynamic>>.from(data['messages']);
   }
 
-  // Envoyer un message (texte ou audio)
+  // Envoyer un message texte
   static Future<Map<String, dynamic>> sendMessage({
     required int coachId,
     required int clientId,
-    String? text,
-    String type = 'text',
-    String? mediaUrl,
+    required String text,
   }) async {
     final response = await http.post(
       Uri.parse('$_baseUrl/messages'),
@@ -74,47 +71,13 @@ class ChatApiService {
       body: jsonEncode({
         'coachId': coachId,
         'clientId': clientId,
-        if (text != null) 'text': text,
-        'type': type,
-        if (mediaUrl != null) 'mediaUrl': mediaUrl,
+        'text': text,
+        'type': 'text',
       }),
     );
     _checkStatus(response);
     final data = jsonDecode(response.body);
     return Map<String, dynamic>.from(data['message']);
-  }
-
-  // Upload un fichier audio
-  static Future<String> uploadAudio(File audioFile) async {
-    final token = await _getToken();
-    final request = http.MultipartRequest(
-      'POST',
-      Uri.parse('$_baseUrl/upload-audio'),
-    );
-
-    request.headers.addAll({
-      'Authorization': 'Bearer $token',
-    });
-
-    request.files.add(
-      await http.MultipartFile.fromPath(
-        'audio',
-        audioFile.path,
-      ),
-    );
-
-    final response = await request.send();
-    final responseBody = await response.stream.bytesToString();
-    final data = jsonDecode(responseBody);
-
-    if (response.statusCode != 200) {
-      throw ApiException(
-        statusCode: response.statusCode,
-        message: data['message'] ?? 'Erreur lors de l\'upload du fichier audio.',
-      );
-    }
-
-    return data['audioUrl'];
   }
 
   // Mettre à jour le statut d'un message
@@ -204,7 +167,6 @@ class ChatApiService {
         : null;
   }
 }
-
 
 class ApiException implements Exception {
   final int statusCode;

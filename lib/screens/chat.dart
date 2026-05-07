@@ -1,10 +1,5 @@
 import 'dart:async';
-import 'dart:io';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:audioplayers/audioplayers.dart';
-import 'package:record/record.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/models/message.dart';
 import 'package:test_hh/services/chatapi_service.dart';
@@ -38,7 +33,7 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
+class _ChatScreenState extends State<ChatScreen> {
   ChatSession get _s => widget.session;
 
   final _msgController = TextEditingController();
@@ -47,32 +42,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   bool _isSending = false;
   String? _errorMsg;
 
-  // Audio
-  bool _isRecording = false;
-  String? _recordingPath;
-  final AudioPlayer _audioPlayer = AudioPlayer();
-  final AudioRecorder _audioRecorder = AudioRecorder();
-  String? _currentPlayingUrl;
-  bool _isPlaying = false;
-
   Timer? _pollTimer;
   final List<ChatMessage> _messages = [];
-
-  late AnimationController _pulseController;
-  late AnimationController _waveController;
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
-    _waveController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat();
-    _initAudio();
     _loadMessages();
     _pollTimer = Timer.periodic(
       const Duration(seconds: 5),
@@ -80,23 +55,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     );
   }
 
-  Future<void> _initAudio() async {
-    await _audioPlayer.setReleaseMode(ReleaseMode.stop);
-    final hasPermission = await _audioRecorder.hasPermission();
-    if (!hasPermission) {
-      _showSnack('Permission microphone requise pour enregistrer des audios.');
-    }
-  }
-
   @override
   void dispose() {
     _msgController.dispose();
     _scrollController.dispose();
-    _pulseController.dispose();
-    _waveController.dispose();
     _pollTimer?.cancel();
-    _audioPlayer.dispose();
-    _audioRecorder.dispose();
     super.dispose();
   }
 
@@ -192,123 +155,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   // ─────────────────────────────────────────────
-  // AUDIO RECORD
-  // ─────────────────────────────────────────────
-
-  Future<void> _startRecording() async {
-    try {
-      final hasPermission = await _audioRecorder.hasPermission();
-      if (!hasPermission) {
-        _showSnack('Permission microphone requise.');
-        return;
-      }
-
-      Directory? dir;
-      try {
-        dir = await getTemporaryDirectory();
-      } catch (_) {
-        try {
-          dir = await getApplicationDocumentsDirectory();
-        } catch (_) {
-          try {
-            dir = await getExternalStorageDirectory();
-          } catch (_) {}
-        }
-      }
-
-      if (dir == null) {
-        _showSnack('Impossible d\'accéder au stockage.');
-        return;
-      }
-
-      _recordingPath =
-          '${dir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
-
-      await _audioRecorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.aacLc,
-          bitRate: 128000,
-          sampleRate: 44100,
-        ),
-        path: _recordingPath!,
-      );
-      setState(() => _isRecording = true);
-    } catch (e) {
-      _showSnack('Erreur microphone : $e');
-      setState(() => _isRecording = false);
-    }
-  }
-
-  Future<void> _stopRecordingAndSend() async {
-    if (!_isRecording) return;
-    try {
-      final path = await _audioRecorder.stop();
-      setState(() => _isRecording = false);
-      if (path != null) {
-        await _uploadAndSendAudio(path);
-      } else {
-        _showSnack('Enregistrement vide.');
-      }
-    } catch (e) {
-      _showSnack('Erreur envoi audio : $e');
-      setState(() => _isRecording = false);
-    }
-  }
-
-  Future<void> _cancelRecording() async {
-    if (!_isRecording) return;
-    try {
-      await _audioRecorder.stop();
-      if (_recordingPath != null) {
-        final f = File(_recordingPath!);
-        if (await f.exists()) await f.delete();
-      }
-    } catch (_) {}
-    setState(() => _isRecording = false);
-    _showSnack('Enregistrement annulé.');
-  }
-
-  Future<void> _uploadAndSendAudio(String audioPath) async {
-    try {
-      final audioFile = File(audioPath);
-      final audioUrl = await ChatApiService.uploadAudio(audioFile);
-
-      final tempId = 'temp_audio_${DateTime.now().millisecondsSinceEpoch}';
-      final tempMsg = ChatMessage(
-        id: tempId,
-        text: '[Message audio]',
-        isUser: true,
-        time: _formatTime(DateTime.now()),
-        timestamp: DateTime.now(),
-        type: MessageType.audio,
-        status: MessageStatus.sending,
-        mediaUrl: audioUrl,
-      );
-      setState(() {
-        _messages.add(tempMsg);
-        _isSending = true;
-      });
-      _scrollToBottom();
-
-      final saved = await ChatApiService.sendMessage(
-        coachId: _s.coachId,
-        clientId: _s.clientId,
-        type: 'audio',
-        mediaUrl: audioUrl,
-      );
-
-      final idx = _messages.indexWhere((m) => m.id == tempId);
-      if (idx != -1 && mounted) {
-        setState(() => _messages[idx] = _fromJson(saved));
-      }
-    } catch (e) {
-      _showSnack('Erreur lors de l\'envoi du message audio: $e');
-    } finally {
-      if (mounted) setState(() => _isSending = false);
-    }
-  }
-
-  // ─────────────────────────────────────────────
   // HELPERS
   // ─────────────────────────────────────────────
 
@@ -327,19 +173,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       isUser: isUser,
       time: _formatTime(dt),
       timestamp: dt,
-      type: _parseType(json['type'] ?? 'text'),
       status: _parseStatus(json['status'] ?? 'sent'),
-      mediaUrl: json['mediaUrl'] as String?,
     );
-  }
-
-  MessageType _parseType(String t) {
-    switch (t) {
-      case 'image': return MessageType.image;
-      case 'audio': return MessageType.audio;
-      case 'video': return MessageType.video;
-      default:      return MessageType.text;
-    }
   }
 
   MessageStatus _parseStatus(String s) {
@@ -527,43 +362,39 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                   ? CrossAxisAlignment.end
                   : CrossAxisAlignment.start,
               children: [
-                msg.type == MessageType.audio
-                    ? _buildAudioMessage(msg, isCurrentUser)
-                    : Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isCurrentUser
-                              ? kNeonGreen.withOpacity(0.15)
-                              : const Color(0xFF1A1A1A),
-                          borderRadius: BorderRadius.only(
-                            topLeft: const Radius.circular(18),
-                            topRight: const Radius.circular(18),
-                            bottomLeft:
-                                Radius.circular(isCurrentUser ? 18 : 4),
-                            bottomRight:
-                                Radius.circular(isCurrentUser ? 4 : 18),
-                          ),
-                          border: Border.all(
-                            color: isCurrentUser
-                                ? kNeonGreen.withOpacity(0.4)
-                                : Colors.white.withOpacity(0.07),
-                          ),
-                        ),
-                        child: Text(
-                          msg.text,
-                          style: TextStyle(
-                            color: isCurrentUser
-                                ? Colors.white
-                                : Colors.white.withOpacity(0.9),
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w500,
-                            height: 1.45,
-                          ),
-                        ),
-                      ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isCurrentUser
+                        ? kNeonGreen.withOpacity(0.15)
+                        : const Color(0xFF1A1A1A),
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(18),
+                      topRight: const Radius.circular(18),
+                      bottomLeft: Radius.circular(isCurrentUser ? 18 : 4),
+                      bottomRight: Radius.circular(isCurrentUser ? 4 : 18),
+                    ),
+                    border: Border.all(
+                      color: isCurrentUser
+                          ? kNeonGreen.withOpacity(0.4)
+                          : Colors.white.withOpacity(0.07),
+                    ),
+                  ),
+                  child: Text(
+                    msg.text,
+                    style: TextStyle(
+                      color: isCurrentUser
+                          ? Colors.white
+                          : Colors.white.withOpacity(0.9),
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w500,
+                      height: 1.45,
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 3),
                 Row(
                   mainAxisSize: MainAxisSize.min,
@@ -591,165 +422,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   // ─────────────────────────────────────────────
-  // AUDIO MESSAGE BUBBLE
-  // ─────────────────────────────────────────────
-
-  Widget _buildAudioMessage(ChatMessage msg, bool isCurrentUser) {
-    if (msg.mediaUrl == null) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: isCurrentUser
-              ? kNeonGreen.withOpacity(0.15)
-              : const Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(18),
-            topRight: const Radius.circular(18),
-            bottomLeft: Radius.circular(isCurrentUser ? 18 : 4),
-            bottomRight: Radius.circular(isCurrentUser ? 4 : 18),
-          ),
-          border: Border.all(
-            color: isCurrentUser
-                ? kNeonGreen.withOpacity(0.4)
-                : Colors.white.withOpacity(0.07),
-          ),
-        ),
-        child: Text(
-          'Audio indisponible',
-          style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13),
-        ),
-      );
-    }
-
-    final isThisPlaying = _currentPlayingUrl == msg.mediaUrl && _isPlaying;
-
-    return GestureDetector(
-      onTap: () async {
-        if (isThisPlaying) {
-          await _audioPlayer.pause();
-          setState(() => _isPlaying = false);
-        } else {
-          if (_currentPlayingUrl != null &&
-              _currentPlayingUrl != msg.mediaUrl) {
-            await _audioPlayer.stop();
-          }
-          await _audioPlayer.play(UrlSource(msg.mediaUrl!));
-          setState(() {
-            _isPlaying = true;
-            _currentPlayingUrl = msg.mediaUrl;
-          });
-          _audioPlayer.onPlayerComplete.listen((_) {
-            if (mounted) {
-              setState(() {
-                _isPlaying = false;
-                _currentPlayingUrl = null;
-              });
-            }
-          });
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: isCurrentUser
-              ? kNeonGreen.withOpacity(0.15)
-              : const Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(18),
-            topRight: const Radius.circular(18),
-            bottomLeft: Radius.circular(isCurrentUser ? 18 : 4),
-            bottomRight: Radius.circular(isCurrentUser ? 4 : 18),
-          ),
-          border: Border.all(
-            color: isCurrentUser
-                ? kNeonGreen.withOpacity(0.4)
-                : Colors.white.withOpacity(0.07),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
-              child: Icon(
-                isThisPlaying
-                    ? Icons.pause_circle_filled
-                    : Icons.play_circle_filled,
-                key: ValueKey(isThisPlaying),
-                color: isCurrentUser ? Colors.white : kNeonGreen,
-                size: 28,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Message audio',
-                  style: TextStyle(
-                    color: isCurrentUser
-                        ? Colors.white
-                        : Colors.white.withOpacity(0.9),
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                isThisPlaying
-                    ? AnimatedBuilder(
-                        animation: _waveController,
-                        builder: (_, __) => Row(
-                          children: List.generate(5, (i) {
-                            final h = 4.0 +
-                                (math
-                                        .sin(_waveController.value *
-                                            2 *
-                                            math.pi +
-                                            i * 0.7)
-                                        .abs() *
-                                    10);
-                            return Container(
-                              margin:
-                                  const EdgeInsets.symmetric(horizontal: 1.5),
-                              width: 3,
-                              height: h,
-                              decoration: BoxDecoration(
-                                color: isCurrentUser
-                                    ? Colors.white.withOpacity(0.8)
-                                    : kNeonGreen.withOpacity(0.8),
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            );
-                          }),
-                        ),
-                      )
-                    : Row(
-                        children: List.generate(
-                          5,
-                          (i) => Container(
-                            margin:
-                                const EdgeInsets.symmetric(horizontal: 1.5),
-                            width: 3,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: isCurrentUser
-                                  ? Colors.white.withOpacity(0.3)
-                                  : Colors.white.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ),
-                        ),
-                      ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────────
   // INPUT BAR
   // ─────────────────────────────────────────────
 
@@ -762,185 +434,65 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           top: BorderSide(color: Colors.white.withOpacity(0.07)),
         ),
       ),
-      child: _isRecording ? _buildRecordingBar() : _buildNormalBar(),
-    );
-  }
-
-  Widget _buildNormalBar() {
-    return Row(
-      children: [
-        Expanded(
-          child: Container(
-            height: 44,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white.withOpacity(0.10)),
-            ),
-            child: TextField(
-              controller: _msgController,
-              style: const TextStyle(color: Colors.white, fontSize: 14),
-              onSubmitted: (_) => _sendMessage(),
-              decoration: InputDecoration(
-                hintText: 'Envoyer un message…',
-                hintStyle: TextStyle(
-                  color: Colors.white.withOpacity(0.3),
-                  fontSize: 13,
-                ),
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              height: 44,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withOpacity(0.10)),
+              ),
+              child: TextField(
+                controller: _msgController,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                onSubmitted: (_) => _sendMessage(),
+                decoration: InputDecoration(
+                  hintText: 'Envoyer un message…',
+                  hintStyle: TextStyle(
+                    color: Colors.white.withOpacity(0.3),
+                    fontSize: 13,
+                  ),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-        const SizedBox(width: 10),
-        // Bouton envoyer texte
-        GestureDetector(
-          onTap: _isSending ? null : _sendMessage,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: _isSending ? kNeonGreen.withOpacity(0.5) : kNeonGreen,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: kNeonGreen.withOpacity(0.4),
-                  blurRadius: 12,
-                ),
-              ],
-            ),
-            child: _isSending
-                ? const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: CircularProgressIndicator(
-                      color: Colors.black,
-                      strokeWidth: 2,
-                    ),
-                  )
-                : const Icon(Icons.send_rounded, color: kDarkBg, size: 18),
-          ),
-        ),
-        const SizedBox(width: 8),
-        // Bouton micro — appui long pour enregistrer
-        GestureDetector(
-          onLongPressStart: (_) => _startRecording(),
-          onLongPressEnd: (_) => _stopRecordingAndSend(),
-          onLongPressCancel: () => _cancelRecording(),
-          child: Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: kNeonGreen.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: kNeonGreen.withOpacity(0.4)),
-            ),
-            child: const Icon(Icons.mic, color: kNeonGreen, size: 20),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRecordingBar() {
-    return Row(
-      children: [
-        GestureDetector(
-          onTap: _cancelRecording,
-          child: Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: Colors.red.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.red.withOpacity(0.4)),
-            ),
-            child: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Container(
-            height: 44,
-            decoration: BoxDecoration(
-              color: Colors.red.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.red.withOpacity(0.25)),
-            ),
-            child: Row(
-              children: [
-                const SizedBox(width: 12),
-                AnimatedBuilder(
-                  animation: _pulseController,
-                  builder: (_, __) => Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.red.withOpacity(
-                        0.4 + _pulseController.value * 0.6,
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: _isSending ? null : _sendMessage,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: _isSending ? kNeonGreen.withOpacity(0.5) : kNeonGreen,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: kNeonGreen.withOpacity(0.4),
+                    blurRadius: 12,
+                  ),
+                ],
+              ),
+              child: _isSending
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: CircularProgressIndicator(
+                        color: Colors.black,
+                        strokeWidth: 2,
                       ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                AnimatedBuilder(
-                  animation: _waveController,
-                  builder: (_, __) => Row(
-                    children: List.generate(12, (i) {
-                      final h = 6.0 +
-                          (math
-                                  .sin(_waveController.value *
-                                      2 *
-                                      math.pi +
-                                      i * 0.5)
-                                  .abs() *
-                              14);
-                      return Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 1),
-                        width: 2.5,
-                        height: h,
-                        decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.7),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      );
-                    }),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Enregistrement…',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.6),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
+                    )
+                  : const Icon(Icons.send_rounded, color: kDarkBg, size: 18),
             ),
           ),
-        ),
-        const SizedBox(width: 10),
-        GestureDetector(
-          onTap: _stopRecordingAndSend,
-          child: Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: kNeonGreen,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(color: kNeonGreen.withOpacity(0.5), blurRadius: 14),
-              ],
-            ),
-            child: const Icon(Icons.send_rounded, color: kDarkBg, size: 18),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
