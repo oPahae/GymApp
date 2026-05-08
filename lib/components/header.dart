@@ -226,12 +226,12 @@ Future<void> _loadUserImage() async {
             ),
             Row(
               children: [
-                const Icon(Icons.signal_cellular_alt, color: Colors.white, size: 18),
-                const SizedBox(width: 4),
-                const Icon(Icons.wifi, color: Colors.white, size: 18),
-                const SizedBox(width: 4),
-                const Icon(Icons.battery_full, color: Colors.white, size: 18),
-                const SizedBox(width: 12),
+                // const Icon(Icons.signal_cellular_alt, color: Colors.white, size: 18),
+                // const SizedBox(width: 4),
+                // const Icon(Icons.wifi, color: Colors.white, size: 18),
+                // const SizedBox(width: 4),
+                // const Icon(Icons.battery_full, color: Colors.white, size: 18),
+                // const SizedBox(width: 12),
                 _buildAvatar(context),
               ],
             ),

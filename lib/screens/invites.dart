@@ -4,18 +4,15 @@ import 'package:http/http.dart' as http;
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/components/header.dart';
 import 'package:test_hh/components/navbar.dart';
+import 'package:test_hh/constants/urls.dart';
 import '../models/client.dart';
-
-// ─── Config ────────────────────────────────────────────────────────────────
-const String _baseUrl = 'http://localhost:5000/api'; // Android emulator
-// const String _baseUrl = 'http://localhost:3000/api'; // iOS simulator
 
 // ─── Service ───────────────────────────────────────────────────────────────
 class InviteService {
   /// Récupère les invitations en attente pour un coach
   static Future<List<Client>> fetchInvites(int coachID) async {
     final response =
-        await http.get(Uri.parse('$_baseUrl/invite/coach/$coachID'));
+        await http.get(Uri.parse('$kBaseUrl/api/invite/coach/$coachID'));
     if (response.statusCode == 200) {
       final List<dynamic> data = json.decode(response.body);
       return data.map((j) => Client.fromJson(j)).toList();
@@ -27,7 +24,7 @@ class InviteService {
   static Future<void> acceptInvite(
       {required int coachID, required int clientID}) async {
     final response = await http.post(
-      Uri.parse('$_baseUrl/invite/accept'),
+      Uri.parse('$kBaseUrl/api/invite/accept'),
       headers: {'Content-Type': 'application/json'},
       body: json.encode({'coachID': coachID, 'clientID': clientID}),
     );
@@ -40,7 +37,7 @@ class InviteService {
   static Future<void> refuseInvite(
       {required int coachID, required int clientID}) async {
     final response = await http.post(
-      Uri.parse('$_baseUrl/invite/refuse'),
+      Uri.parse('$kBaseUrl/api/invite/refuse'),
       headers: {'Content-Type': 'application/json'},
       body: json.encode({'coachID': coachID, 'clientID': clientID}),
     );
@@ -313,7 +310,7 @@ class _InvitesPageState extends State<InvitesPage> {
     return Scaffold(
       backgroundColor: kDarkBg,
       appBar: const Header(),
-      bottomNavigationBar: const NavBar(),
+      // bottomNavigationBar: NavBar(),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

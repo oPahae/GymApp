@@ -117,7 +117,7 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: NavBar(),
+      bottomNavigationBar: NavBar(selectedIndex: 2),
     );
   }
 

@@ -4,17 +4,14 @@ import 'package:http/http.dart' as http;
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/components/header.dart';
 import 'package:test_hh/components/navbar.dart';
+import 'package:test_hh/constants/urls.dart';
 import '../models/coach.dart';
-
-// ─── Config ────────────────────────────────────────────────────────────────
-const String _baseUrl = 'http://localhost:5000/api'; // Android emulator
-// const String _baseUrl = 'http://localhost:3000/api'; // iOS simulator
 
 // ─── Service ───────────────────────────────────────────────────────────────
 class CoachService {
   /// Récupère tous les coaches depuis l'API
   static Future<List<Coach>> fetchCoaches() async {
-    final response = await http.get(Uri.parse('$_baseUrl/coach'));
+    final response = await http.get(Uri.parse('$kBaseUrl/api/coach'));
     if (response.statusCode == 200) {
       final List<dynamic> data = json.decode(response.body);
       return data.map((json) => Coach.fromJson(json)).toList();
@@ -28,7 +25,7 @@ class CoachService {
     required int clientID,
   }) async {
     final response = await http.post(
-      Uri.parse('$_baseUrl/invite'),
+      Uri.parse('$kBaseUrl/api/invite'),
       headers: {'Content-Type': 'application/json'},
       body: json.encode({'coachID': coachID, 'clientID': clientID}),
     );
@@ -109,7 +106,7 @@ class _CoachesPageState extends State<CoachesPage> {
     return Scaffold(
       backgroundColor: kDarkBg,
       appBar: const Header(),
-      bottomNavigationBar: const NavBar(),
+      // bottomNavigationBar: NavBar(),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

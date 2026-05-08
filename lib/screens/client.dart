@@ -223,7 +223,7 @@ class _ClientScreenState extends State<ClientScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: NavBar(),
+      // bottomNavigationBar: NavBar(),
     );
   }
 
