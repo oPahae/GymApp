@@ -145,7 +145,9 @@ class _FoodsScreenState extends State<FoodsScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kDarkBg,
+
       appBar: const Header(),
+
       body: SafeArea(
         child: Column(
           children: [
@@ -172,8 +174,10 @@ class _FoodsScreenState extends State<FoodsScreen>
           ],
         ),
       ),
+
       floatingActionButton: _cartTotal > 0 ? _buildCartFAB() : null,
-      bottomNavigationBar: const NavBar(),
+
+      bottomNavigationBar: NavBar(selectedIndex: 1),
     );
   }
 

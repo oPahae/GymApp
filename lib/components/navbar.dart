@@ -7,7 +7,9 @@ import 'package:test_hh/screens/bodyParts.dart';
 import 'package:test_hh/screens/stats.dart';
 
 class NavBar extends StatefulWidget {
-  const NavBar({super.key});
+  NavBar({ super.key, required this.selectedIndex });
+
+  int selectedIndex;
 
   @override
   State<NavBar> createState() => _NavBarState();
@@ -16,7 +18,6 @@ class NavBar extends StatefulWidget {
 // test
 
 class _NavBarState extends State<NavBar> {
-  int _selectedIndex = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -35,22 +36,7 @@ class _NavBarState extends State<NavBar> {
       _NavItem(
         icon: Icons.bar_chart,
         label: 'Stats',
-        href: StatScreen(
-          client: Client(
-            id: 1,
-            name: 'Test User',
-            image: 'https://i.pravatar.cc/150?img=1',
-            birth: DateTime(1995, 6, 15),
-            weight: 80,
-            height: 175,
-            frequency: 4,
-            goal: 'Perte de poids',
-            weightGoal: 70,
-            createdAt: DateTime(2024, 1, 1),
-            coachID: 1,
-            gender: 'male', email: '', password: '',
-          ),
-        ),
+        href: StatScreen(),
       ),
     ];
 
@@ -78,10 +64,10 @@ class _NavBarState extends State<NavBar> {
         children: items.asMap().entries.map((entry) {
           final index = entry.key;
           final item = entry.value;
-          final isActive = _selectedIndex == index;
+          final isActive = index == widget.selectedIndex;
           return GestureDetector(
             onTap: () => {
-              setState(() => _selectedIndex = index),
+              // setState(() => _selectedIndex = index),
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => item.href),

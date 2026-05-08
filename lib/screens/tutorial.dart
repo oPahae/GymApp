@@ -54,7 +54,7 @@ class _TutorialScreenState extends State<TutorialScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: NavBar(),
+      // bottomNavigationBar: NavBar(),
     );
   }
 

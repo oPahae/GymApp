@@ -123,7 +123,7 @@ class _ProgramScreenState extends State<ProgramScreen> {
     return Scaffold(
       backgroundColor: kDarkBg,
       appBar: const Header(),
-      bottomNavigationBar: const NavBar(),
+      // bottomNavigationBar: NavBar(),
       body: FutureBuilder<List<DayProgram>>(
         future: _programFuture,
         builder: (context, snapshot) {

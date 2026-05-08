@@ -5,8 +5,7 @@ import 'package:test_hh/components/header.dart';
 import 'package:test_hh/components/navbar.dart';
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/screens/tutorial.dart';
-
-const String _kBase = 'http://192.168.0.232:5000/api';
+import 'package:test_hh/constants/urls.dart';
 
 // ─── Models ───────────────────────────────────────────────────────────────────
 
@@ -111,7 +110,7 @@ class _ExerciceScreenState extends State<ExerciceScreen> {
   Future<void> _fetchExercice() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final uri = Uri.parse('$_kBase/exercice/${widget.exerciceID}');
+      final uri = Uri.parse('$kBaseUrl/api/exercice/${widget.exerciceID}');
       final response = await http.get(uri).timeout(const Duration(seconds: 10));
 
       if (response.statusCode != 200) {
@@ -144,7 +143,7 @@ class _ExerciceScreenState extends State<ExerciceScreen> {
         body: const Center(
           child: CircularProgressIndicator(color: kNeonGreen, strokeWidth: 2),
         ),
-        bottomNavigationBar: NavBar(),
+        // bottomNavigationBar: NavBar(),
       );
     }
 
@@ -170,7 +169,7 @@ class _ExerciceScreenState extends State<ExerciceScreen> {
             ],
           ),
         ),
-        bottomNavigationBar: NavBar(),
+        // bottomNavigationBar: NavBar(),
       );
     }
 
@@ -204,7 +203,7 @@ class _ExerciceScreenState extends State<ExerciceScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: NavBar(),
+      // bottomNavigationBar: NavBar(),
     );
   }
 

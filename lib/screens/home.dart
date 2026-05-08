@@ -429,7 +429,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: NavBar(),
+      bottomNavigationBar: NavBar(selectedIndex: 0),
     );
   }
 

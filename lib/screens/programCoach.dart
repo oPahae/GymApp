@@ -483,7 +483,7 @@ for (int i = 0; i < 7; i++) {
     return Scaffold(
       backgroundColor: kDarkBg,
       appBar: const Header(),
-      bottomNavigationBar: const NavBar(),
+      // bottomNavigationBar: NavBar(),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _isSaving ? null : _save,
         backgroundColor: kNeonGreen,

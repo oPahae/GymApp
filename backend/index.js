@@ -13,7 +13,6 @@ import authRoutes from './routes/jihane/auth.js';
 import clientRoutes from './routes/jihane/client.js';
 import coachRoutes from './routes/jihane/coach.js';
 import chatRoutes from './routes/jihane/chat.js';
-import emailServiceRoutes from './routes/jihane/emailService.js';
 
 import coachRoute from './routes/zaynab/coach.js'
 import inviteRoute from './routes/zaynab/invite.js'
@@ -40,7 +39,6 @@ app.use('/api/jihane/auth', authRoutes);
 app.use('/api/jihane/clients', clientRoutes);
 app.use('/api/jihane/coaches', coachRoutes);
 app.use('/api/jihane/chat', chatRoutes);
-app.use('/api/jihane/chat', emailServiceRoutes);
 
 // Routes Zaynab
 app.use("/api/coach", coachRoute)
