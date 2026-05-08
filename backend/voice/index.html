@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assember - Group Call</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.3.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        .usersCont, #audios {
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="h-screen w-full flex flex-col items-center justify-center">
+    <div class="w-full h-screen p-8 mx-auto flex flex-col gap-3">
+        <div class="w-12 h-12 p-4 bg-red-500 glass-light fixed top-10 right-10 z-50 flex justify-center items-center cursor-pointer" onclick="history.back()">
+            <i class="fa-solid fa-phone-slash text-white"></i>
+        </div>
+        
+        <div id="status" class="glass-light p-4 text-center text-indigo-200">
+            Waiting for connexion...
+        </div>
+        
+        <div class="w-full grow usersCont">
+            <div id="audios" class="h-full w-full flex flex-wrap gap-3 overflow-y-scroll"></div>
+        </div>
+        
+        <div id="connectionLogs" class="glass-light p-4 w-full max-h-40 overflow-y-auto text-sm text-gray-300 fixed bottom-0 left-0">
+            <div class="mb-1">Connexion logs will be shown here...</div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
