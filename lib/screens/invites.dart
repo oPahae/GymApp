@@ -5,6 +5,7 @@ import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/components/header.dart';
 import 'package:test_hh/components/navbar.dart';
 import 'package:test_hh/constants/urls.dart';
+import 'package:test_hh/session/user_session.dart'; // ← UserSession
 import '../models/client.dart';
 
 // ─── Service ───────────────────────────────────────────────────────────────
@@ -17,7 +18,8 @@ class InviteService {
       final List<dynamic> data = json.decode(response.body);
       return data.map((j) => Client.fromJson(j)).toList();
     }
-    throw Exception('Impossible de charger les invitations (${response.statusCode})');
+    throw Exception(
+        'Impossible de charger les invitations (${response.statusCode})');
   }
 
   /// Accepter un client
@@ -49,21 +51,24 @@ class InviteService {
 
 // ─── Page ──────────────────────────────────────────────────────────────────
 class InvitesPage extends StatefulWidget {
-  /// ID du coach connecté — à passer depuis la session/auth
-  final int currentCoachID;
-
-  const InvitesPage({super.key, required this.currentCoachID});
+  /// Plus besoin de passer currentCoachID en paramètre :
+  /// on le lit directement depuis UserSession.
+  const InvitesPage({super.key});
 
   @override
   State<InvitesPage> createState() => _InvitesPageState();
 }
 
 class _InvitesPageState extends State<InvitesPage> {
+  // ── Session ──────────────────────────────────────────────────────────────
+  final _session = UserSession.instance;
+
   late Future<List<Client>> _invitesFuture;
-  // Liste locale pour les suppressions optimistes
   List<Client>? _invites;
-  // IDs en cours de traitement (loading)
   final Set<int> _processing = {};
+
+  /// ID du coach connecté, lu depuis la session
+  int get _coachID => _session.id;
 
   @override
   void initState() {
@@ -72,7 +77,7 @@ class _InvitesPageState extends State<InvitesPage> {
   }
 
   void _loadInvites() {
-    _invitesFuture = InviteService.fetchInvites(widget.currentCoachID)
+    _invitesFuture = InviteService.fetchInvites(_coachID)
       ..then((list) {
         if (mounted) setState(() => _invites = list);
       });
@@ -98,7 +103,7 @@ class _InvitesPageState extends State<InvitesPage> {
 
     try {
       await InviteService.acceptInvite(
-        coachID: widget.currentCoachID,
+        coachID: _coachID,
         clientID: client.id,
       );
       if (!mounted) return;
@@ -267,7 +272,7 @@ class _InvitesPageState extends State<InvitesPage> {
     setState(() => _processing.add(client.id));
     try {
       await InviteService.refuseInvite(
-        coachID: widget.currentCoachID,
+        coachID: _coachID,
         clientID: client.id,
       );
       if (!mounted) return;
@@ -305,12 +310,29 @@ class _InvitesPageState extends State<InvitesPage> {
   // ── Build ────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    // Garde-fou : si la session n'est pas chargée (ne devrait pas arriver
+    // après un login correct), on affiche un message d'erreur plutôt que
+    // de crasher.
+    if (!_session.isLoaded || !_session.isCoach) {
+      return Scaffold(
+        backgroundColor: kDarkBg,
+        appBar: const Header(),
+        body: Center(
+          child: Text(
+            'Session invalide.\nVeuillez vous reconnecter.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                color: Colors.white.withOpacity(0.5), fontSize: 14),
+          ),
+        ),
+      );
+    }
+
     final invites = _invites;
 
     return Scaffold(
       backgroundColor: kDarkBg,
       appBar: const Header(),
-      // bottomNavigationBar: NavBar(),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -329,7 +351,7 @@ class _InvitesPageState extends State<InvitesPage> {
                   ),
                 ),
                 const SizedBox(width: 10),
-                // Badge compteur — affiché uniquement quand les données sont là
+                // Badge compteur
                 if (invites != null)
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 300),
@@ -351,6 +373,16 @@ class _InvitesPageState extends State<InvitesPage> {
                     ),
                   ),
                 const Spacer(),
+                // Nom du coach connecté (info contextuelle)
+                Text(
+                  _session.name,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.35),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(width: 10),
                 // Bouton refresh
                 GestureDetector(
                   onTap: _loadInvites,
@@ -365,14 +397,12 @@ class _InvitesPageState extends State<InvitesPage> {
             child: FutureBuilder<List<Client>>(
               future: _invitesFuture,
               builder: (context, snapshot) {
-                // Chargement initial
                 if (snapshot.connectionState == ConnectionState.waiting &&
                     invites == null) {
                   return const Center(
                     child: CircularProgressIndicator(color: kNeonGreen),
                   );
                 }
-                // Erreur
                 if (snapshot.hasError && invites == null) {
                   return Center(
                     child: Column(
@@ -409,7 +439,6 @@ class _InvitesPageState extends State<InvitesPage> {
                 }
 
                 final list = invites ?? [];
-
                 if (list.isEmpty) return _buildEmptyState();
 
                 return ListView.separated(
@@ -495,10 +524,8 @@ class _InviteCard extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              // ── Infos client ──
               Row(
                 children: [
-                  // Avatar
                   Container(
                     width: 52,
                     height: 52,
@@ -513,8 +540,7 @@ class _InviteCard extends StatelessWidget {
                             child: Image.network(
                               client.image,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) =>
-                                  _buildInitial(),
+                              errorBuilder: (_, __, ___) => _buildInitial(),
                             ),
                           )
                         : _buildInitial(),
@@ -551,7 +577,6 @@ class _InviteCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // Spinner si en cours
                   if (isProcessing)
                     const SizedBox(
                       width: 20,
@@ -564,10 +589,8 @@ class _InviteCard extends StatelessWidget {
               const SizedBox(height: 14),
               const Divider(height: 1, color: Colors.white10),
               const SizedBox(height: 14),
-              // ── Boutons ──
               Row(
                 children: [
-                  // Refuser
                   Expanded(
                     child: GestureDetector(
                       onTap: isProcessing ? null : onRefuse,
@@ -592,7 +615,6 @@ class _InviteCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  // Accepter
                   Expanded(
                     child: GestureDetector(
                       onTap: isProcessing ? null : onAccept,

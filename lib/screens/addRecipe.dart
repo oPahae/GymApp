@@ -1,18 +1,14 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
-import 'package:flutter/foundation.dart';
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/constants/urls.dart';
 import 'package:test_hh/models/food.dart';
 import 'package:test_hh/models/recipeIngredient.dart';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Example values (replace with real session/auth values)
-// ─────────────────────────────────────────────────────────────────────────────
-const int kExampleClientID = 1;
+import 'package:test_hh/services/api_service.dart';
+import 'package:test_hh/session/user_session.dart'; // ← ajout
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Screen
@@ -26,6 +22,10 @@ class AddRecipeScreen extends StatefulWidget {
 }
 
 class _AddRecipeScreenState extends State<AddRecipeScreen> {
+  // ── Session ─────────────────────────────────────────────────────────────────
+  // Lecture directe depuis UserSession — plus de Future/loading pour la session.
+  int get _clientID => UserSession.instance.id;
+
   // ── Form state ──────────────────────────────────────────────────────────────
   final _nameController = TextEditingController();
   XFile? _pickedImage;
@@ -51,7 +51,9 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
   bool get _canSave =>
       _nameController.text.trim().isNotEmpty &&
       _entries.isNotEmpty &&
-      !_saving;
+      !_saving &&
+      UserSession.instance.isLoaded &&
+      UserSession.instance.isClient;
 
   List<FoodModel> get _filteredCatalogue => _catalogue
       .where((f) => f.name.toLowerCase().contains(_searchQuery))
@@ -64,9 +66,14 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
     super.initState();
     _nameController.addListener(() => setState(() {}));
     _searchController.addListener(
-      () => setState(() => _searchQuery = _searchController.text.toLowerCase()),
+      () => setState(
+          () => _searchQuery = _searchController.text.toLowerCase()),
     );
-    _fetchIngredients();
+    // Plus besoin de charger la session : on la lit directement.
+    // On vérifie uniquement que la session est valide avant de fetch.
+    if (UserSession.instance.isLoaded && UserSession.instance.isClient) {
+      _fetchIngredients();
+    }
   }
 
   @override
@@ -74,6 +81,16 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
     _nameController.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  // ── Headers avec token ────────────────────────────────────────────────────────
+
+  Future<Map<String, String>> _headers() async {
+    final token = await ApiService.getToken();
+    return {
+      'Content-Type': 'application/json',
+      if (token != null) 'Authorization': 'Bearer $token',
+    };
   }
 
   // ── API calls ────────────────────────────────────────────────────────────────
@@ -85,17 +102,17 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
     });
     try {
       final uri = Uri.parse('$kBaseUrl/api/pahae/addRecipe/ingredients');
-      final response = await http.get(uri).timeout(const Duration(seconds: 10));
-
-      print(response.statusCode);
-      print(response.body);
+      final headers = await _headers();
+      final response =
+          await http.get(uri, headers: headers).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final body = jsonDecode(response.body);
         if (body['success'] == true) {
           final List<dynamic> raw = body['data'] ?? [];
           setState(() {
-            _catalogue = raw.map((json) => FoodModel.fromJson(json)).toList();
+            _catalogue =
+                raw.map((json) => FoodModel.fromJson(json)).toList();
             _loadingCatalogue = false;
           });
         } else {
@@ -117,47 +134,28 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
       final uri = Uri.parse(
         "https://api.cloudinary.com/v1_1/dlqcknocf/image/upload",
       );
-
       final request = http.MultipartRequest("POST", uri);
-
       request.fields['upload_preset'] = 'GymApp';
 
       if (kIsWeb) {
-        // 🌐 WEB
         final bytes = await imageFile.readAsBytes();
-
-        request.files.add(
-          http.MultipartFile.fromBytes(
-            'file',
-            bytes,
-            filename: imageFile.name,
-          ),
-        );
+        request.files.add(http.MultipartFile.fromBytes('file', bytes,
+            filename: imageFile.name));
       } else {
-        // 📱 MOBILE
-        request.files.add(
-          await http.MultipartFile.fromPath(
-            'file',
-            imageFile.path,
-          ),
-        );
+        request.files
+            .add(await http.MultipartFile.fromPath('file', imageFile.path));
       }
 
       final response = await request.send();
       final res = await response.stream.bytesToString();
-
-      print("Cloudinary response: $res");
-
       final data = jsonDecode(res);
 
       if (response.statusCode == 200) {
         return data['secure_url'];
       } else {
-        print("Cloudinary error: $res");
         return null;
       }
     } catch (e) {
-      print("Cloudinary exception: $e");
       return null;
     }
   }
@@ -170,14 +168,14 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
       String? imageUrl;
       if (_pickedImage != null) {
         imageUrl = await uploadImageToCloudinary(_pickedImage!);
-        if (imageUrl == null) {
-          throw Exception("Image upload failed");
-        }
+        if (imageUrl == null) throw Exception("Image upload failed");
       } else if (_entries.isNotEmpty) {
         imageUrl = _entries.first.food.imageUrl;
       }
+
+      final headers = await _headers();
       final body = jsonEncode({
-        'clientID': kExampleClientID,
+        'clientID': _clientID, // ← lu depuis UserSession
         'name': _nameController.text.trim(),
         'image': imageUrl,
         'calories': _totalCalories.toInt(),
@@ -191,15 +189,10 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
 
       final uri = Uri.parse('$kBaseUrl/api/pahae/addRecipe/save');
       final response = await http
-          .post(
-            uri,
-            headers: {'Content-Type': 'application/json'},
-            body: body,
-          )
+          .post(uri, headers: headers, body: body)
           .timeout(const Duration(seconds: 15));
 
       final decoded = jsonDecode(response.body);
-
       if (!mounted) return;
 
       if (response.statusCode == 201 && decoded['success'] == true) {
@@ -211,8 +204,7 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
         );
         Navigator.pop(context, true);
       } else {
-        final msg = decoded['message'] ?? 'Failed to save recipe.';
-        _showErrorSnack(msg);
+        _showErrorSnack(decoded['message'] ?? 'Failed to save recipe.');
       }
     } catch (e) {
       _showErrorSnack('Network error. Please try again.');
@@ -243,16 +235,14 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
   }
 
   void _removeEntry(RecipeIngredientModel entry) {
-    setState(() => _entries.removeWhere((e) => e.food.id == entry.food.id));
+    setState(() =>
+        _entries.removeWhere((e) => e.food.id == entry.food.id));
   }
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final xfile = await picker.pickImage(source: ImageSource.gallery);
-
-    if (xfile != null) {
-      setState(() => _pickedImage = xfile);
-    }
+    if (xfile != null) setState(() => _pickedImage = xfile);
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -261,6 +251,51 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ── Vérification de session (synchrone) ────────────────────────────────
+    if (!UserSession.instance.isLoaded || !UserSession.instance.isClient) {
+      return Scaffold(
+        backgroundColor: kDarkBg,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.lock_outline,
+                    color: Colors.white.withOpacity(0.2), size: 52),
+                const SizedBox(height: 16),
+                Text(
+                  UserSession.instance.isLoaded
+                      ? 'Accès réservé aux clients.'
+                      : 'Session introuvable. Reconnectez-vous.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: Colors.white.withOpacity(0.5), fontSize: 14),
+                ),
+                const SizedBox(height: 20),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 10),
+                    decoration: BoxDecoration(
+                        border: Border.all(
+                            color: kNeonGreen.withOpacity(0.5)),
+                        borderRadius: BorderRadius.circular(10)),
+                    child: const Text('RETOUR',
+                        style: TextStyle(
+                            color: kNeonGreen,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: kDarkBg,
       body: SafeArea(
@@ -313,15 +348,12 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
           ),
           const SizedBox(width: 14),
           const Expanded(
-            child: Text(
-              'NEW RECIPE',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 2,
-              ),
-            ),
+            child: Text('NEW RECIPE',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 2)),
           ),
           if (_entries.isNotEmpty)
             Container(
@@ -338,14 +370,11 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
                   const Icon(Icons.restaurant_menu,
                       color: kNeonGreen, size: 13),
                   const SizedBox(width: 5),
-                  Text(
-                    '${_entries.length} items',
-                    style: const TextStyle(
-                      color: kNeonGreen,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                  Text('${_entries.length} items',
+                      style: const TextStyle(
+                          color: kNeonGreen,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700)),
                 ],
               ),
             ),
@@ -400,16 +429,13 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
                         Icon(Icons.add_photo_alternate_outlined,
                             color: kNeonGreen.withOpacity(0.7), size: 26),
                         const SizedBox(height: 5),
-                        Text(
-                          'ADD\nIMAGE',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: kNeonGreen.withOpacity(0.6),
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.8,
-                          ),
-                        ),
+                        Text('ADD\nIMAGE',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                color: kNeonGreen.withOpacity(0.6),
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.8)),
                       ],
                     ),
             ),
@@ -451,32 +477,27 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 300),
                   child: _entries.isEmpty
-                      ? Text(
-                          'Add ingredients below',
+                      ? Text('Add ingredients below',
                           key: const ValueKey('hint'),
                           style: TextStyle(
                               color: Colors.white.withOpacity(0.25),
-                              fontSize: 12),
-                        )
+                              fontSize: 12))
                       : Row(
                           key: const ValueKey('cals'),
                           children: [
                             const Icon(Icons.local_fire_department,
                                 color: kNeonGreen, size: 14),
                             const SizedBox(width: 5),
+                            Text('${_totalCalories.toInt()} kcal total',
+                                style: const TextStyle(
+                                    color: kNeonGreen,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700)),
                             Text(
-                              '${_totalCalories.toInt()} kcal total',
-                              style: const TextStyle(
-                                  color: kNeonGreen,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700),
-                            ),
-                            Text(
-                              '  ·  ${_entries.length} ingredient${_entries.length > 1 ? 's' : ''}',
-                              style: TextStyle(
-                                  color: Colors.white.withOpacity(0.4),
-                                  fontSize: 12),
-                            ),
+                                '  ·  ${_entries.length} ingredient${_entries.length > 1 ? 's' : ''}',
+                                style: TextStyle(
+                                    color: Colors.white.withOpacity(0.4),
+                                    fontSize: 12)),
                           ],
                         ),
                 ),
@@ -492,7 +513,6 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
 
   Widget _buildLiveRecipeSummary() {
     if (_entries.isEmpty) return const SizedBox.shrink();
-
     return AnimatedSize(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
@@ -511,14 +531,12 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
                     horizontal: 16, vertical: 14),
                 child: Row(
                   children: [
-                    const Text(
-                      'RECIPE SUMMARY',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.5),
-                    ),
+                    const Text('RECIPE SUMMARY',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.5)),
                     const Spacer(),
                     Container(
                       padding: const EdgeInsets.symmetric(
@@ -534,13 +552,11 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
                           const Icon(Icons.local_fire_department,
                               color: kNeonGreen, size: 12),
                           const SizedBox(width: 4),
-                          Text(
-                            '${_totalCalories.toInt()} kcal',
-                            style: const TextStyle(
-                                color: kNeonGreen,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700),
-                          ),
+                          Text('${_totalCalories.toInt()} kcal',
+                              style: const TextStyle(
+                                  color: kNeonGreen,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700)),
                         ],
                       ),
                     ),
@@ -575,12 +591,10 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
           if (_pickedImage != null)
             Image.network(_pickedImage!.path, fit: BoxFit.cover)
           else if (_entries.isNotEmpty)
-            Image.network(
-              _entries.first.food.imageUrl,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) =>
-                  Container(color: const Color(0xFF1A1A1A)),
-            ),
+            Image.network(_entries.first.food.imageUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) =>
+                    Container(color: const Color(0xFF1A1A1A))),
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -608,8 +622,9 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
                         : Colors.white.withOpacity(0.3),
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
-                    fontStyle:
-                        hasName ? FontStyle.normal : FontStyle.italic,
+                    fontStyle: hasName
+                        ? FontStyle.normal
+                        : FontStyle.italic,
                     shadows: const [
                       Shadow(color: Colors.black87, blurRadius: 6)
                     ],
@@ -617,10 +632,10 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${_entries.length} ingredient${_entries.length > 1 ? 's' : ''}  ·  ${_totalCalories.toInt()} kcal',
-                  style: TextStyle(
-                      color: Colors.white.withOpacity(0.55), fontSize: 11),
-                ),
+                    '${_entries.length} ingredient${_entries.length > 1 ? 's' : ''}  ·  ${_totalCalories.toInt()} kcal',
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.55),
+                        fontSize: 11)),
               ],
             ),
           ),
@@ -639,19 +654,16 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
-                child: Image.network(
-                  entry.food.imageUrl,
-                  width: 40,
-                  height: 40,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
+                child: Image.network(entry.food.imageUrl,
                     width: 40,
                     height: 40,
-                    color: Colors.white10,
-                    child: const Icon(Icons.fastfood,
-                        color: Colors.white24, size: 16),
-                  ),
-                ),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                        width: 40,
+                        height: 40,
+                        color: Colors.white10,
+                        child: const Icon(Icons.fastfood,
+                            color: Colors.white24, size: 16))),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -663,12 +675,10 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
                             color: Colors.white,
                             fontSize: 13,
                             fontWeight: FontWeight.w600)),
-                    Text(
-                      '${entry.contributedCalories.toInt()} kcal',
-                      style: TextStyle(
-                          color: Colors.white.withOpacity(0.4),
-                          fontSize: 11),
-                    ),
+                    Text('${entry.contributedCalories.toInt()} kcal',
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.4),
+                            fontSize: 11)),
                   ],
                 ),
               ),
@@ -710,20 +720,17 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
         ),
         SizedBox(
           width: 52,
-          child: Text(
-            entry.quantityLabel,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w700),
-          ),
+          child: Text(entry.quantityLabel,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700)),
         ),
         _stepperBtn(
-          icon: Icons.add,
-          onTap: () => setState(() => entry.quantity += step),
-          isPlus: true,
-        ),
+            icon: Icons.add,
+            onTap: () => setState(() => entry.quantity += step),
+            isPlus: true),
       ],
     );
   }
@@ -761,41 +768,31 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
           Row(
             children: [
-              const Text(
-                'INGREDIENTS',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.5),
-              ),
+              const Text('INGREDIENTS',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.5)),
               const Spacer(),
-              Text(
-                '${_entries.length} selected',
-                style: TextStyle(
-                    color: Colors.white.withOpacity(0.35), fontSize: 12),
-              ),
+              Text('${_entries.length} selected',
+                  style: TextStyle(
+                      color: Colors.white.withOpacity(0.35), fontSize: 12)),
             ],
           ),
           const SizedBox(height: 12),
-
-          // ── States ────────────────────────────────────────────────────────────
           if (_loadingCatalogue) ...[
             const SizedBox(height: 40),
             const Center(
-              child: CircularProgressIndicator(
-                  color: kNeonGreen, strokeWidth: 2),
-            ),
+                child: CircularProgressIndicator(
+                    color: kNeonGreen, strokeWidth: 2)),
             const SizedBox(height: 12),
             Center(
-              child: Text(
-                'Loading ingredients…',
-                style: TextStyle(
-                    color: Colors.white.withOpacity(0.3), fontSize: 12),
-              ),
+              child: Text('Loading ingredients…',
+                  style: TextStyle(
+                      color: Colors.white.withOpacity(0.3), fontSize: 12)),
             ),
           ] else if (_catalogueError != null) ...[
             const SizedBox(height: 20),
@@ -807,35 +804,31 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
                 decoration: BoxDecoration(
                   color: kDarkCard,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.redAccent.withOpacity(0.3)),
+                  border: Border.all(
+                      color: Colors.redAccent.withOpacity(0.3)),
                 ),
                 child: Column(
                   children: [
                     Icon(Icons.wifi_off_rounded,
                         color: Colors.redAccent.withOpacity(0.7), size: 28),
                     const SizedBox(height: 10),
-                    Text(
-                      _catalogueError!,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          color: Colors.white.withOpacity(0.4),
-                          fontSize: 12),
-                    ),
+                    Text(_catalogueError!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.4),
+                            fontSize: 12)),
                     const SizedBox(height: 8),
-                    Text(
-                      'TAP TO RETRY',
-                      style: TextStyle(
-                          color: kNeonGreen.withOpacity(0.8),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1),
-                    ),
+                    Text('TAP TO RETRY',
+                        style: TextStyle(
+                            color: kNeonGreen.withOpacity(0.8),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1)),
                   ],
                 ),
               ),
             ),
           ] else ...[
-            // Search bar
             Container(
               decoration: BoxDecoration(
                 color: kDarkCard,
@@ -868,8 +861,6 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
               ),
             ),
             const SizedBox(height: 12),
-
-            // List or empty state
             if (_filteredCatalogue.isEmpty)
               Center(
                 child: Padding(
@@ -916,23 +907,20 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
         child: Row(
           children: [
             ClipRRect(
-              borderRadius: const BorderRadius.horizontal(
-                  left: Radius.circular(14)),
+              borderRadius:
+                  const BorderRadius.horizontal(left: Radius.circular(14)),
               child: SizedBox(
                 width: 68,
                 height: 68,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    Image.network(
-                      food.imageUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: const Color(0xFF1A1A1A),
-                        child: const Icon(Icons.fastfood,
-                            color: Colors.white24, size: 20),
-                      ),
-                    ),
+                    Image.network(food.imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                            color: const Color(0xFF1A1A1A),
+                            child: const Icon(Icons.fastfood,
+                                color: Colors.white24, size: 20))),
                     Container(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
@@ -961,20 +949,16 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
                   children: [
                     _buildTypeChip(food.typeLabel, highlighted: added),
                     const SizedBox(height: 4),
-                    Text(
-                      food.name,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700),
-                    ),
+                    Text(food.name,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700)),
                     const SizedBox(height: 2),
-                    Text(
-                      food.calLabel,
-                      style: TextStyle(
-                          color: Colors.white.withOpacity(0.38),
-                          fontSize: 11),
-                    ),
+                    Text(food.calLabel,
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.38),
+                            fontSize: 11)),
                   ],
                 ),
               ),
@@ -986,12 +970,11 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color:
-                      added ? kNeonGreen : kNeonGreen.withOpacity(0.1),
+                  color: added ? kNeonGreen : kNeonGreen.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                      color: kNeonGreen.withOpacity(added ? 1 : 0.4),
-                      width: 1),
+                      color:
+                          kNeonGreen.withOpacity(added ? 1 : 0.4), width: 1),
                 ),
                 child: Icon(
                   added ? Icons.check : Icons.add,
@@ -1015,16 +998,16 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
         onTap: _saving ? null : _saveRecipe,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
           decoration: BoxDecoration(
             color: _saving ? kNeonGreen.withOpacity(0.5) : kNeonGreen,
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: kNeonGreen.withOpacity(0.22),
-                blurRadius: 18,
-                offset: const Offset(0, 4),
-              ),
+                  color: kNeonGreen.withOpacity(0.22),
+                  blurRadius: 18,
+                  offset: const Offset(0, 4))
             ],
           ),
           child: Row(
@@ -1032,23 +1015,20 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
             children: [
               if (_saving)
                 const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                      color: Colors.black, strokeWidth: 2),
-                )
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        color: Colors.black, strokeWidth: 2))
               else
                 const Icon(Icons.save_alt_rounded,
                     color: Colors.black, size: 20),
               const SizedBox(width: 8),
-              Text(
-                _saving ? 'SAVING…' : 'SAVE RECIPE',
-                style: const TextStyle(
-                    color: Colors.black,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5),
-              ),
+              Text(_saving ? 'SAVING…' : 'SAVE RECIPE',
+                  style: const TextStyle(
+                      color: Colors.black,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5)),
             ],
           ),
         ),
@@ -1068,14 +1048,12 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
             color: kNeonGreen.withOpacity(highlighted ? 0.5 : 0.2),
             width: 1),
       ),
-      child: Text(
-        label,
-        style: const TextStyle(
-            color: kNeonGreen,
-            fontSize: 8,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0.6),
-      ),
+      child: Text(label,
+          style: const TextStyle(
+              color: kNeonGreen,
+              fontSize: 8,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.6)),
     );
   }
 }

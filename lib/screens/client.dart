@@ -1,10 +1,16 @@
 import 'dart:math' as math;
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/components/navbar.dart';
 import 'package:test_hh/components/header.dart';
+import 'package:test_hh/services/api_service.dart';
+import 'package:test_hh/session/user_session.dart'; // ← ajout
 
-// ─── Models ──────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// MODÈLES
+// ─────────────────────────────────────────────────────────────────────────────
 
 enum FoodType { solid, liquid, grains, unit }
 
@@ -61,7 +67,14 @@ class Client {
   final String goal;
   final double weightGoal;
   final DateTime createdAt;
-  final int coachId;
+  final int? coachId;
+  final String? gender;
+
+  // Données du coach (si assigné)
+  final String? coachName;
+  final String? coachImage;
+  final String? coachSpecialty;
+  final String? coachBio;
 
   const Client({
     required this.id,
@@ -74,118 +87,123 @@ class Client {
     required this.goal,
     required this.weightGoal,
     required this.createdAt,
-    required this.coachId,
+    this.coachId,
+    this.gender,
+    this.coachName,
+    this.coachImage,
+    this.coachSpecialty,
+    this.coachBio,
   });
 
-  factory Client.fromJson(Map<String, dynamic> json) {
+  /// Construit un Client depuis la réponse de /api/jihane/auth/me (role=client)
+  factory Client.fromMeJson(Map<String, dynamic> user) {
+    final coach = user['coach'] as Map<String, dynamic>?;
     return Client(
-      id: json['id'],
-      name: json['name'],
-      image: json['image'],
-      birth: DateTime.parse(json['birth']),
-      weight: (json['weight'] as num).toDouble(),
-      height: (json['height'] as num).toDouble(),
-      frequency: json['frequency'],
-      goal: json['goal'],
-      weightGoal: (json['weightGoal'] as num).toDouble(),
-      createdAt: DateTime.parse(json['createdAt']),
-      coachId: json['coachID'],
+      id: user['id'] as int,
+      name: user['name'] as String? ?? '',
+      image: user['image'] as String? ?? '',
+      birth: DateTime.tryParse(user['birth'] as String? ?? '') ??
+          DateTime(2000),
+      weight: (user['weight'] as num?)?.toDouble() ?? 0.0,
+      height: (user['height'] as num?)?.toDouble() ?? 0.0,
+      frequency: (user['frequency'] as num?)?.toInt() ?? 0,
+      goal: user['goal'] as String? ?? '',
+      weightGoal: (user['weightGoal'] as num?)?.toDouble() ?? 0.0,
+      createdAt:
+          DateTime.tryParse(user['createdAt'] as String? ?? '') ??
+              DateTime.now(),
+      coachId: user['coachID'] as int?,
+      gender: user['gender'] as String?,
+      coachName: coach?['name'] as String?,
+      coachImage: coach?['image'] as String?,
+      coachSpecialty: coach?['specialty'] as String?,
+      coachBio: coach?['bio'] as String?,
     );
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-      'image': image,
-      'birth': birth.toIso8601String(),
-      'weight': weight,
-      'height': height,
-      'frequency': frequency,
-      'goal': goal,
-      'weightGoal': weightGoal,
-      'createdAt': createdAt.toIso8601String(),
-      'coachID': coachId,
-    };
+  /// Construit un Client directement depuis UserSession (pas de requête réseau).
+  factory Client.fromUserSession(UserSession session) {
+    // Les données du coach sont dans session['coach'] si disponibles
+    final coach = session['coach'] as Map<String, dynamic>?;
+    return Client(
+      id: session.id,
+      name: session.name,
+      image: session.image,
+      birth: DateTime.tryParse(session.birth) ?? DateTime(2000),
+      weight: session.weight,
+      height: session.height,
+      frequency: session.frequency,
+      goal: session.goal,
+      weightGoal: session.weightGoal,
+      createdAt: DateTime.now(), // createdAt non exposé dans UserSession
+      coachId: session.coachID,
+      gender: session.gender.isNotEmpty ? session.gender : null,
+      coachName: coach?['name'] as String?,
+      coachImage: coach?['image'] as String?,
+      coachSpecialty: coach?['specialty'] as String?,
+      coachBio: coach?['bio'] as String?,
+    );
   }
 
   int get age {
     final now = DateTime.now();
-    int age = now.year - birth.year;
+    int a = now.year - birth.year;
     if (now.month < birth.month ||
         (now.month == birth.month && now.day < birth.day)) {
-      age--;
+      a--;
     }
-    return age;
+    return a;
   }
 
-  double get bmi => weight / ((height / 100) * (height / 100));
+  double get bmi =>
+      height > 0 ? weight / ((height / 100) * (height / 100)) : 0;
 }
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
 
 class ClientScreen extends StatefulWidget {
-  final Client client;
+  /// Si [client] est fourni (ex: coach qui consulte un profil),
+  /// on l'affiche directement. Sinon on lit depuis UserSession.
+  final Client? client;
 
-  const ClientScreen({super.key, required this.client});
+  const ClientScreen({super.key, this.client});
 
   @override
   State<ClientScreen> createState() => _ClientScreenState();
 }
 
 class _ClientScreenState extends State<ClientScreen> {
+  // ── Session / data ─────────────────────────────────────────────────────────
+  Client? _client;
+  bool _loading = true;
+  String? _error;
+
+  // ── Foods ─────────────────────────────────────────────────────────────────
+  List<FoodModel> _chosenFoods = [];
+  bool _loadingFoods = false;
+
+  // ── Weight history ────────────────────────────────────────────────────────
+  List<_WeightEntry> _weightHistory = [];
+
+  // ── Program editor ────────────────────────────────────────────────────────
   final TextEditingController _programController = TextEditingController();
   bool _programEditing = false;
 
-  // Mock weight-per-month data (replace with real data)
-  final List<_WeightEntry> _weightHistory = [
-    _WeightEntry(month: 'Nov', weight: 92.0),
-    _WeightEntry(month: 'Dec', weight: 90.5),
-    _WeightEntry(month: 'Jan', weight: 88.2),
-    _WeightEntry(month: 'Feb', weight: 86.8),
-    _WeightEntry(month: 'Mar', weight: 85.1),
-    _WeightEntry(month: 'Apr', weight: 83.6),
-    _WeightEntry(month: 'May', weight: 82.0),
-  ];
-
-  // Mock food list chosen by the client
-  final List<FoodModel> _chosenFoods = const [
-    FoodModel(
-      id: '1',
-      name: 'Grilled Chicken Breast',
-      imageUrl: 'https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=100',
-      calories: 165,
-      type: FoodType.solid,
-    ),
-    FoodModel(
-      id: '2',
-      name: 'Oatmeal',
-      imageUrl: 'https://images.pexels.com/photos/704971/pexels-photo-704971.jpeg?auto=compress&cs=tinysrgb&w=100',
-      calories: 68,
-      type: FoodType.grains,
-    ),
-    FoodModel(
-      id: '3',
-      name: 'Whey Protein Shake',
-      imageUrl: 'https://images.pexels.com/photos/3622608/pexels-photo-3622608.jpeg?auto=compress&cs=tinysrgb&w=100',
-      calories: 120,
-      type: FoodType.liquid,
-    ),
-    FoodModel(
-      id: '4',
-      name: 'Boiled Eggs',
-      imageUrl: 'https://images.pexels.com/photos/1123170/pexels-photo-1123170.jpeg?auto=compress&cs=tinysrgb&w=100',
-      calories: 78,
-      type: FoodType.unit,
-    ),
-    FoodModel(
-      id: '5',
-      name: 'Salmon Fillet',
-      imageUrl: 'https://images.pexels.com/photos/3763847/pexels-photo-3763847.jpeg?auto=compress&cs=tinysrgb&w=100',
-      calories: 208,
-      type: FoodType.solid,
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    if (widget.client != null) {
+      // Client passé en paramètre (ex: coach consulte un profil)
+      _client = widget.client;
+      _loading = false;
+      _loadClientData();
+    } else {
+      // Lire depuis UserSession (synchrone — pas de Future)
+      _loadFromSession();
+    }
+  }
 
   @override
   void dispose() {
@@ -193,8 +211,219 @@ class _ClientScreenState extends State<ClientScreen> {
     super.dispose();
   }
 
+  // ── Charger depuis UserSession (synchrone) ─────────────────────────────────
+
+  void _loadFromSession() {
+    final session = UserSession.instance;
+
+    if (!session.isLoaded) {
+      setState(() {
+        _error = 'Session introuvable. Reconnectez-vous.';
+        _loading = false;
+      });
+      return;
+    }
+
+    if (!session.isClient) {
+      setState(() {
+        _error = 'Cet écran est réservé aux clients.';
+        _loading = false;
+      });
+      return;
+    }
+
+    // Construction du Client depuis le cache de session — aucun appel réseau
+    setState(() {
+      _client = Client.fromUserSession(session);
+      _loading = false;
+    });
+
+    _loadClientData();
+  }
+
+  /// Charge les données supplémentaires du client (foods, weight history…)
+  Future<void> _loadClientData() async {
+    if (_client == null) return;
+    await Future.wait([
+      _fetchChosenFoods(),
+      _fetchWeightHistory(),
+    ]);
+  }
+
+  // ── Aliments du client ─────────────────────────────────────────────────────
+
+  Future<void> _fetchChosenFoods() async {
+    if (_client == null) return;
+    setState(() => _loadingFoods = true);
+    try {
+      final token = await ApiService.getToken();
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      };
+      final uri = Uri.parse(
+          'http://192.168.0.232:5000/api/pahae/addFood/recent/${_client!.id}');
+      final res = await http
+          .get(uri, headers: headers)
+          .timeout(const Duration(seconds: 10));
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      if (res.statusCode == 200 && body['success'] == true) {
+        final List raw = body['data'] as List? ?? [];
+        setState(() {
+          _chosenFoods = raw
+              .map((j) => _foodFromJson(j as Map<String, dynamic>))
+              .toList();
+        });
+      }
+    } catch (_) {
+      // Silencieux
+    } finally {
+      if (mounted) setState(() => _loadingFoods = false);
+    }
+  }
+
+  // ── Historique de poids ────────────────────────────────────────────────────
+
+  Future<void> _fetchWeightHistory() async {
+    if (_client == null) return;
+    try {
+      final token = await ApiService.getToken();
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      };
+      final uri = Uri.parse(
+          'http://192.168.0.232:5000/api/jihane/clients/${_client!.id}/weight-history');
+      final res = await http
+          .get(uri, headers: headers)
+          .timeout(const Duration(seconds: 10));
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      if (res.statusCode == 200 && body['success'] == true) {
+        final List raw = body['data'] as List? ?? [];
+        setState(() {
+          _weightHistory = raw
+              .map((j) => _WeightEntry(
+                    month: j['month'] as String? ?? '',
+                    weight: (j['weight'] as num?)?.toDouble() ?? 0.0,
+                  ))
+              .toList();
+        });
+        return;
+      }
+    } catch (_) {}
+
+    // Fallback mock si l'endpoint n'existe pas encore
+    if (_weightHistory.isEmpty && _client != null) {
+      setState(() {
+        _weightHistory = [
+          _WeightEntry(month: 'Nov', weight: _client!.weight + 10),
+          _WeightEntry(month: 'Dec', weight: _client!.weight + 8),
+          _WeightEntry(month: 'Jan', weight: _client!.weight + 6),
+          _WeightEntry(month: 'Feb', weight: _client!.weight + 4),
+          _WeightEntry(month: 'Mar', weight: _client!.weight + 2),
+          _WeightEntry(month: 'Apr', weight: _client!.weight + 1),
+          _WeightEntry(month: 'May', weight: _client!.weight),
+        ];
+      });
+    }
+  }
+
+  // ── Helper parsing food depuis JSON ───────────────────────────────────────
+
+  FoodModel _foodFromJson(Map<String, dynamic> j) {
+    FoodType type;
+    switch ((j['type'] as String? ?? '').toLowerCase()) {
+      case 'liquid':
+        type = FoodType.liquid;
+        break;
+      case 'grains':
+        type = FoodType.grains;
+        break;
+      case 'unit':
+        type = FoodType.unit;
+        break;
+      default:
+        type = FoodType.solid;
+    }
+    return FoodModel(
+      id: j['id']?.toString() ?? '',
+      name: j['name'] as String? ?? '',
+      imageUrl: j['imageUrl'] as String? ?? '',
+      calories: (j['calories'] as num?)?.toDouble() ?? 0.0,
+      type: type,
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // BUILD
+  // ─────────────────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
+    // ── Loading (rare : uniquement si widget.client != null et fetch en cours) ──
+    if (_loading) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        appBar: const Header(),
+        body: const Center(
+          child:
+              CircularProgressIndicator(color: kNeonGreen, strokeWidth: 2),
+        ),
+      );
+    }
+
+    // ── Erreur session ──
+    if (_error != null) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        appBar: const Header(),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.lock_outline,
+                    color: Colors.white.withOpacity(0.2), size: 52),
+                const SizedBox(height: 16),
+                Text(_error!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.5), fontSize: 14)),
+                const SizedBox(height: 20),
+                GestureDetector(
+                  // Si session invalide, on tente de recharger depuis session
+                  onTap: () {
+                          setState(() {
+                            _loading = true;
+                            _error = null;
+                          });
+                          _loadFromSession();
+                        },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 10),
+                    decoration: BoxDecoration(
+                      border:
+                          Border.all(color: kNeonGreen.withOpacity(0.5)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text('RÉESSAYER',
+                        style: TextStyle(
+                            color: kNeonGreen,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final client = _client!;
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: const Header(),
@@ -206,31 +435,31 @@ class _ClientScreenState extends State<ClientScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 20),
-                _buildProfileHeader(),
+                _buildProfileHeader(client),
                 const SizedBox(height: 14),
-                _buildQuickStats(),
+                _buildQuickStats(client),
                 const SizedBox(height: 14),
-                _buildProgressCard(),
-                const SizedBox(height: 14),
-                _buildWeightChart(),
-                const SizedBox(height: 14),
+                if (_weightHistory.isNotEmpty) ...[
+                  _buildProgressCard(client),
+                  const SizedBox(height: 14),
+                  _buildWeightChart(),
+                  const SizedBox(height: 14),
+                ],
                 _buildFoodList(),
                 const SizedBox(height: 14),
-                _buildCoachProgram(),
+                _buildCoachProgram(client),
                 const SizedBox(height: 20),
               ],
             ),
           ),
         ],
       ),
-      // bottomNavigationBar: NavBar(),
     );
   }
 
   // ── Profile Header ──────────────────────────────────────────────────────────
 
-  Widget _buildProfileHeader() {
-    final client = widget.client;
+  Widget _buildProfileHeader(Client client) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18),
       child: Container(
@@ -269,67 +498,78 @@ class _ClientScreenState extends State<ClientScreen> {
                     BoxShadow(
                       color: kNeonGreen.withOpacity(0.3),
                       blurRadius: 12,
-                      spreadRadius: 0,
                     ),
                   ],
                 ),
                 child: ClipOval(
-                  child: Image.network(
-                    client.image,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      color: const Color(0xFF1E1E1E),
-                      child: const Icon(Icons.person, color: kNeonGreen, size: 36),
-                    ),
-                  ),
+                  child: client.image.isNotEmpty
+                      ? Image.network(client.image,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => _avatarFallback())
+                      : _avatarFallback(),
                 ),
               ),
               const SizedBox(width: 16),
-              // Name + goal
+              // Name + goal + infos
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      client.name,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.3,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: kNeonGreen.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: kNeonGreen.withOpacity(0.4)),
-                      ),
-                      child: Text(
-                        client.goal.toUpperCase(),
+                    Text(client.name,
                         style: const TextStyle(
-                          color: kNeonGreen,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1,
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3)),
+                    const SizedBox(height: 4),
+                    if (client.goal.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: kNeonGreen.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(20),
+                          border:
+                              Border.all(color: kNeonGreen.withOpacity(0.4)),
                         ),
+                        child: Text(client.goal.toUpperCase(),
+                            style: const TextStyle(
+                                color: kNeonGreen,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1)),
                       ),
-                    ),
                     const SizedBox(height: 6),
                     Text(
-                      '${client.age} yrs  •  ${client.frequency}x / week',
+                      '${client.age} yrs'
+                      '${client.gender != null ? '  ·  ${client.gender}' : ''}'
+                      '  ·  ${client.frequency}x / week',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.45),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
+                          color: Colors.white.withOpacity(0.45),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500),
                     ),
+                    // Coach assigné
+                    if (client.coachName != null) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(Icons.person_outline,
+                              color: kNeonGreen, size: 13),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Coach: ${client.coachName}',
+                            style: TextStyle(
+                                color: Colors.white.withOpacity(0.55),
+                                fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
-              // BMI badge
+              // BMI badge — calculé à partir de weight/height de UserSession
               _bmiPill(client.bmi),
             ],
           ),
@@ -337,6 +577,11 @@ class _ClientScreenState extends State<ClientScreen> {
       ),
     );
   }
+
+  Widget _avatarFallback() => Container(
+        color: const Color(0xFF1E1E1E),
+        child: const Icon(Icons.person, color: kNeonGreen, size: 36),
+      );
 
   Widget _bmiPill(double bmi) {
     String label;
@@ -356,58 +601,56 @@ class _ClientScreenState extends State<ClientScreen> {
     }
     return Column(
       children: [
-        Text(
-          bmi.toStringAsFixed(1),
-          style: TextStyle(
-            color: color,
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        Text(
-          'BMI',
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.4),
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 1,
-          ),
-        ),
+        Text(bmi.toStringAsFixed(1),
+            style: TextStyle(
+                color: color,
+                fontSize: 22,
+                fontWeight: FontWeight.w800)),
+        Text('BMI',
+            style: TextStyle(
+                color: Colors.white.withOpacity(0.4),
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 1)),
         const SizedBox(height: 2),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
           decoration: BoxDecoration(
             color: color.withOpacity(0.15),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: color.withOpacity(0.5)),
           ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1,
-            ),
-          ),
+          child: Text(label,
+              style: TextStyle(
+                  color: color,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1)),
         ),
       ],
     );
   }
 
   // ── Quick Stats Row ─────────────────────────────────────────────────────────
+  // Données : weight, height, weightGoal — toutes dans UserSession
 
-  Widget _buildQuickStats() {
-    final client = widget.client;
+  Widget _buildQuickStats(Client client) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18),
       child: Row(
         children: [
-          Expanded(child: _statTile(Icons.monitor_weight_outlined, 'WEIGHT', '${client.weight} kg')),
+          Expanded(
+              child: _statTile(Icons.monitor_weight_outlined, 'WEIGHT',
+                  '${client.weight} kg')),
           const SizedBox(width: 10),
-          Expanded(child: _statTile(Icons.height, 'HEIGHT', '${client.height.toInt()} cm')),
+          Expanded(
+              child: _statTile(Icons.height, 'HEIGHT',
+                  '${client.height.toInt()} cm')),
           const SizedBox(width: 10),
-          Expanded(child: _statTile(Icons.flag_outlined, 'GOAL WT', '${client.weightGoal} kg')),
+          Expanded(
+              child: _statTile(Icons.flag_outlined, 'GOAL WT',
+                  '${client.weightGoal} kg')),
         ],
       ),
     );
@@ -426,24 +669,18 @@ class _ClientScreenState extends State<ClientScreen> {
         children: [
           Icon(icon, color: kNeonGreen, size: 18),
           const SizedBox(height: 8),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
+          Text(value,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800)),
           const SizedBox(height: 2),
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.4),
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1,
-            ),
-          ),
+          Text(label,
+              style: TextStyle(
+                  color: Colors.white.withOpacity(0.4),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1)),
         ],
       ),
     );
@@ -451,14 +688,14 @@ class _ClientScreenState extends State<ClientScreen> {
 
   // ── Progress Card ───────────────────────────────────────────────────────────
 
-  Widget _buildProgressCard() {
-    final client = widget.client;
+  Widget _buildProgressCard(Client client) {
     final startWeight = _weightHistory.first.weight;
     final currentWeight = client.weight;
     final goalWeight = client.weightGoal;
     final totalToLose = startWeight - goalWeight;
     final lost = startWeight - currentWeight;
-    final progress = totalToLose > 0 ? (lost / totalToLose).clamp(0.0, 1.0) : 0.0;
+    final progress =
+        totalToLose > 0 ? (lost / totalToLose).clamp(0.0, 1.0) : 0.0;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18),
@@ -469,9 +706,7 @@ class _ClientScreenState extends State<ClientScreen> {
           border: Border.all(color: kNeonGreen.withOpacity(0.2)),
           boxShadow: [
             BoxShadow(
-              color: kNeonGreen.withOpacity(0.06),
-              blurRadius: 16,
-            ),
+                color: kNeonGreen.withOpacity(0.06), blurRadius: 16)
           ],
         ),
         child: Padding(
@@ -479,7 +714,6 @@ class _ClientScreenState extends State<ClientScreen> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Circular arc
               SizedBox(
                 width: 110,
                 height: 110,
@@ -488,28 +722,23 @@ class _ClientScreenState extends State<ClientScreen> {
                   children: [
                     CustomPaint(
                       size: const Size(110, 110),
-                      painter: _CircularProgressPainter(progress: progress),
+                      painter: _CircularProgressPainter(
+                          progress: progress),
                     ),
                     Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(
-                          '${(progress * 100).toInt()}%',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        Text(
-                          'DONE',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.4),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1,
-                          ),
-                        ),
+                        Text('${(progress * 100).toInt()}%',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800)),
+                        Text('DONE',
+                            style: TextStyle(
+                                color: Colors.white.withOpacity(0.4),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 1)),
                       ],
                     ),
                   ],
@@ -520,36 +749,39 @@ class _ClientScreenState extends State<ClientScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'WEIGHT PROGRESS',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
+                    const Text('WEIGHT PROGRESS',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.2)),
                     const SizedBox(height: 12),
-                    _progressRow('Start', '${startWeight.toStringAsFixed(1)} kg', 1.0),
+                    _progressRow('Start',
+                        '${startWeight.toStringAsFixed(1)} kg', 1.0),
                     const SizedBox(height: 8),
-                    _progressRow('Current', '${currentWeight.toStringAsFixed(1)} kg', progress),
+                    _progressRow(
+                        'Current',
+                        '${currentWeight.toStringAsFixed(1)} kg',
+                        progress),
                     const SizedBox(height: 8),
-                    _progressRow('Goal', '${goalWeight.toStringAsFixed(1)} kg', 0.15),
+                    _progressRow('Goal',
+                        '${goalWeight.toStringAsFixed(1)} kg', 0.15),
                     const SizedBox(height: 10),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
                         color: kNeonGreen.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: kNeonGreen.withOpacity(0.35)),
+                        border: Border.all(
+                            color: kNeonGreen.withOpacity(0.35)),
                       ),
                       child: Text(
-                        '${lost.toStringAsFixed(1)} kg lost  •  ${(totalToLose - lost).toStringAsFixed(1)} kg to go',
+                        '${lost.toStringAsFixed(1)} kg lost  ·  ${(totalToLose - lost).toStringAsFixed(1)} kg to go',
                         style: const TextStyle(
-                          color: kNeonGreen,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
+                            color: kNeonGreen,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600),
                       ),
                     ),
                   ],
@@ -567,15 +799,12 @@ class _ClientScreenState extends State<ClientScreen> {
       children: [
         SizedBox(
           width: 52,
-          child: Text(
-            label,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.4),
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.8,
-            ),
-          ),
+          child: Text(label,
+              style: TextStyle(
+                  color: Colors.white.withOpacity(0.4),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.8)),
         ),
         const SizedBox(width: 6),
         Expanded(
@@ -584,20 +813,18 @@ class _ClientScreenState extends State<ClientScreen> {
             child: LinearProgressIndicator(
               value: progress,
               backgroundColor: Colors.white10,
-              valueColor: const AlwaysStoppedAnimation<Color>(kNeonGreen),
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(kNeonGreen),
               minHeight: 3,
             ),
           ),
         ),
         const SizedBox(width: 8),
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+        Text(value,
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w700)),
       ],
     );
   }
@@ -621,28 +848,25 @@ class _ClientScreenState extends State<ClientScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'WEIGHT / MONTH',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.3,
-                    ),
-                  ),
+                  const Text('WEIGHT / MONTH',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.3)),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: kNeonGreen.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      '6 months',
+                      '${_weightHistory.length} months',
                       style: TextStyle(
-                        color: kNeonGreen.withOpacity(0.8),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
+                          color: kNeonGreen.withOpacity(0.8),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600),
                     ),
                   ),
                 ],
@@ -656,20 +880,14 @@ class _ClientScreenState extends State<ClientScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              // Month labels
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: _weightHistory
-                    .map(
-                      (e) => Text(
-                        e.month,
+                    .map((e) => Text(e.month,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.4),
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    )
+                            color: Colors.white.withOpacity(0.4),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600)))
                     .toList(),
               ),
             ],
@@ -687,38 +905,63 @@ class _ClientScreenState extends State<ClientScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "CLIENT'S FOOD LIST",
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.5,
-            ),
-          ),
+          const Text("CLIENT'S FOOD LIST",
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.5)),
           const SizedBox(height: 14),
-          Container(
-            decoration: BoxDecoration(
-              color: kDarkCard,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withOpacity(0.06)),
-            ),
-            child: Column(
-              children: [
-                ..._chosenFoods.asMap().entries.map((entry) {
-                  final i = entry.key;
-                  final food = entry.value;
-                  return Column(
-                    children: [
-                      _buildFoodRow(food),
-                      if (i < _chosenFoods.length - 1)
-                        Divider(height: 1, color: Colors.white.withOpacity(0.06)),
-                    ],
-                  );
-                }),
-              ],
-            ),
-          ),
+          _loadingFoods
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: CircularProgressIndicator(
+                        color: kNeonGreen, strokeWidth: 2),
+                  ),
+                )
+              : _chosenFoods.isEmpty
+                  ? Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: kDarkCard,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                            color: Colors.white.withOpacity(0.06)),
+                      ),
+                      child: Center(
+                        child: Text('Aucun aliment enregistré',
+                            style: TextStyle(
+                                color: Colors.white.withOpacity(0.3),
+                                fontSize: 13)),
+                      ),
+                    )
+                  : Container(
+                      decoration: BoxDecoration(
+                        color: kDarkCard,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                            color: Colors.white.withOpacity(0.06)),
+                      ),
+                      child: Column(
+                        children: [
+                          ..._chosenFoods.asMap().entries.map((entry) {
+                            final i = entry.key;
+                            final food = entry.value;
+                            return Column(
+                              children: [
+                                _buildFoodRow(food),
+                                if (i < _chosenFoods.length - 1)
+                                  Divider(
+                                      height: 1,
+                                      color:
+                                          Colors.white.withOpacity(0.06)),
+                              ],
+                            );
+                          }),
+                        ],
+                      ),
+                    ),
         ],
       ),
     );
@@ -746,40 +989,29 @@ class _ClientScreenState extends State<ClientScreen> {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: Image.network(
-              food.imageUrl,
-              width: 50,
-              height: 50,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
-                width: 50,
-                height: 50,
-                color: const Color(0xFF1E1E1E),
-                child: const Icon(Icons.fastfood, color: Colors.white38, size: 20),
-              ),
-            ),
+            child: food.imageUrl.isNotEmpty
+                ? Image.network(food.imageUrl,
+                    width: 50,
+                    height: 50,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _foodFallback())
+                : _foodFallback(),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  food.name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                Text(food.name,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600)),
                 const SizedBox(height: 3),
-                Text(
-                  food.calLabel,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.45),
-                    fontSize: 11,
-                  ),
-                ),
+                Text(food.calLabel,
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.45),
+                        fontSize: 11)),
               ],
             ),
           ),
@@ -790,24 +1022,28 @@ class _ClientScreenState extends State<ClientScreen> {
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: typeColor.withOpacity(0.4)),
             ),
-            child: Text(
-              food.typeLabel,
-              style: TextStyle(
-                color: typeColor,
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.8,
-              ),
-            ),
+            child: Text(food.typeLabel,
+                style: TextStyle(
+                    color: typeColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8)),
           ),
         ],
       ),
     );
   }
 
+  Widget _foodFallback() => Container(
+        width: 50,
+        height: 50,
+        color: const Color(0xFF1E1E1E),
+        child: const Icon(Icons.fastfood, color: Colors.white38, size: 20),
+      );
+
   // ── Coach Program ───────────────────────────────────────────────────────────
 
-  Widget _buildCoachProgram() {
+  Widget _buildCoachProgram(Client client) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18),
       child: Column(
@@ -816,21 +1052,18 @@ class _ClientScreenState extends State<ClientScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'COACH PROGRAM',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.5,
-                ),
-              ),
+              const Text('COACH PROGRAM',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.5)),
               GestureDetector(
-                onTap: () {
-                  setState(() => _programEditing = !_programEditing);
-                },
+                onTap: () => setState(
+                    () => _programEditing = !_programEditing),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: kNeonGreen, width: 1.5),
@@ -838,20 +1071,18 @@ class _ClientScreenState extends State<ClientScreen> {
                   child: Row(
                     children: [
                       Icon(
-                        _programEditing ? Icons.check : Icons.edit_outlined,
-                        color: kNeonGreen,
-                        size: 13,
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        _programEditing ? 'SAVE' : 'EDIT',
-                        style: const TextStyle(
+                          _programEditing
+                              ? Icons.check
+                              : Icons.edit_outlined,
                           color: kNeonGreen,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.8,
-                        ),
-                      ),
+                          size: 13),
+                      const SizedBox(width: 5),
+                      Text(_programEditing ? 'SAVE' : 'EDIT',
+                          style: const TextStyle(
+                              color: kNeonGreen,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.8)),
                     ],
                   ),
                 ),
@@ -859,6 +1090,52 @@ class _ClientScreenState extends State<ClientScreen> {
             ],
           ),
           const SizedBox(height: 14),
+          if (client.coachName != null) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: kDarkCard,
+                borderRadius: BorderRadius.circular(16),
+                border:
+                    Border.all(color: kNeonGreen.withOpacity(0.15)),
+              ),
+              child: Row(
+                children: [
+                  ClipOval(
+                    child: client.coachImage != null &&
+                            client.coachImage!.isNotEmpty
+                        ? Image.network(client.coachImage!,
+                            width: 40,
+                            height: 40,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                _coachAvatarFallback())
+                        : _coachAvatarFallback(),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(client.coachName!,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700)),
+                        if (client.coachSpecialty != null &&
+                            client.coachSpecialty!.isNotEmpty)
+                          Text(client.coachSpecialty!,
+                              style: TextStyle(
+                                  color: kNeonGreen.withOpacity(0.7),
+                                  fontSize: 11)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           Container(
             decoration: BoxDecoration(
               color: kDarkCard,
@@ -872,22 +1149,21 @@ class _ClientScreenState extends State<ClientScreen> {
               boxShadow: _programEditing
                   ? [
                       BoxShadow(
-                        color: kNeonGreen.withOpacity(0.08),
-                        blurRadius: 20,
-                        spreadRadius: 0,
-                      )
+                          color: kNeonGreen.withOpacity(0.08),
+                          blurRadius: 20)
                     ]
                   : [],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header bar
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.03),
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                    borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(20)),
                   ),
                   child: Row(
                     children: [
@@ -898,27 +1174,22 @@ class _ClientScreenState extends State<ClientScreen> {
                           color: kNeonGreen.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Icon(Icons.fitness_center, color: kNeonGreen, size: 15),
+                        child: const Icon(Icons.fitness_center,
+                            color: kNeonGreen, size: 15),
                       ),
                       const SizedBox(width: 10),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Training & Nutrition Plan',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          Text(
-                            'Written by coach',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.4),
-                              fontSize: 11,
-                            ),
-                          ),
+                          const Text('Training & Nutrition Plan',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700)),
+                          Text('Written by coach',
+                              style: TextStyle(
+                                  color: Colors.white.withOpacity(0.4),
+                                  fontSize: 11)),
                         ],
                       ),
                       const Spacer(),
@@ -927,15 +1198,13 @@ class _ClientScreenState extends State<ClientScreen> {
                           width: 8,
                           height: 8,
                           decoration: const BoxDecoration(
-                            color: kNeonGreen,
-                            shape: BoxShape.circle,
-                          ),
+                              color: kNeonGreen,
+                              shape: BoxShape.circle),
                         ),
                     ],
                   ),
                 ),
                 const Divider(height: 1, color: Colors.white10),
-                // Text area
                 Padding(
                   padding: const EdgeInsets.all(16),
                   child: TextField(
@@ -944,7 +1213,9 @@ class _ClientScreenState extends State<ClientScreen> {
                     maxLines: null,
                     minLines: 8,
                     style: TextStyle(
-                      color: _programEditing ? Colors.white : Colors.white.withOpacity(0.75),
+                      color: _programEditing
+                          ? Colors.white
+                          : Colors.white.withOpacity(0.75),
                       fontSize: 13,
                       fontWeight: FontWeight.w400,
                       height: 1.7,
@@ -955,9 +1226,8 @@ class _ClientScreenState extends State<ClientScreen> {
                           ? 'Write the training & nutrition program here…'
                           : 'No program written yet. Tap EDIT to add one.',
                       hintStyle: TextStyle(
-                        color: Colors.white.withOpacity(0.25),
-                        fontSize: 13,
-                      ),
+                          color: Colors.white.withOpacity(0.25),
+                          fontSize: 13),
                       border: InputBorder.none,
                       isDense: true,
                       contentPadding: EdgeInsets.zero,
@@ -972,9 +1242,16 @@ class _ClientScreenState extends State<ClientScreen> {
       ),
     );
   }
+
+  Widget _coachAvatarFallback() => Container(
+        width: 40,
+        height: 40,
+        color: const Color(0xFF1E1E1E),
+        child: const Icon(Icons.person, color: kNeonGreen, size: 22),
+      );
 }
 
-// ─── Weight Chart Painter ─────────────────────────────────────────────────────
+// ─── Weight Chart ─────────────────────────────────────────────────────────────
 
 class _WeightEntry {
   final String month;
@@ -988,7 +1265,7 @@ class _WeightChartPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (entries.isEmpty) return;
+    if (entries.length < 2) return;
 
     final minW = entries.map((e) => e.weight).reduce(math.min) - 2;
     final maxW = entries.map((e) => e.weight).reduce(math.max) + 2;
@@ -997,99 +1274,100 @@ class _WeightChartPainter extends CustomPainter {
     double yPos(double w) =>
         size.height - ((w - minW) / (maxW - minW)) * size.height;
 
-    final points = List.generate(
-        entries.length, (i) => Offset(xPos(i), yPos(entries[i].weight)));
+    final points = List.generate(entries.length,
+        (i) => Offset(xPos(i), yPos(entries[i].weight)));
 
-    // Gradient fill under the line
-    final fillPath = Path();
-    fillPath.moveTo(points.first.dx, size.height);
+    // Gradient fill
+    final fillPath = Path()
+      ..moveTo(points.first.dx, size.height);
     for (final p in points) {
       fillPath.lineTo(p.dx, p.dy);
     }
-    fillPath.lineTo(points.last.dx, size.height);
-    fillPath.close();
+    fillPath
+      ..lineTo(points.last.dx, size.height)
+      ..close();
 
-    final fillPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          kNeonGreen.withOpacity(0.25),
-          kNeonGreen.withOpacity(0.0),
-        ],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
-    canvas.drawPath(fillPath, fillPaint);
+    canvas.drawPath(
+      fillPath,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            kNeonGreen.withOpacity(0.25),
+            kNeonGreen.withOpacity(0.0)
+          ],
+        ).createShader(
+            Rect.fromLTWH(0, 0, size.width, size.height)),
+    );
 
-    // Horizontal grid lines
+    // Grid lines
     final gridPaint = Paint()
       ..color = Colors.white.withOpacity(0.06)
       ..strokeWidth = 1;
     for (int i = 0; i <= 3; i++) {
       final y = size.height * i / 3;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+      canvas.drawLine(
+          Offset(0, y), Offset(size.width, y), gridPaint);
     }
 
-    // Line
-    final linePaint = Paint()
-      ..color = kNeonGreen
-      ..strokeWidth = 2.2
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
-
-    final linePath = Path()..moveTo(points.first.dx, points.first.dy);
+    // Curve line
+    final linePath = Path()
+      ..moveTo(points.first.dx, points.first.dy);
     for (int i = 1; i < points.length; i++) {
-      final cp1 = Offset((points[i - 1].dx + points[i].dx) / 2, points[i - 1].dy);
-      final cp2 = Offset((points[i - 1].dx + points[i].dx) / 2, points[i].dy);
-      linePath.cubicTo(cp1.dx, cp1.dy, cp2.dx, cp2.dy, points[i].dx, points[i].dy);
+      final cp1 = Offset(
+          (points[i - 1].dx + points[i].dx) / 2, points[i - 1].dy);
+      final cp2 = Offset(
+          (points[i - 1].dx + points[i].dx) / 2, points[i].dy);
+      linePath.cubicTo(cp1.dx, cp1.dy, cp2.dx, cp2.dy, points[i].dx,
+          points[i].dy);
     }
-    canvas.drawPath(linePath, linePaint);
 
-    // Glow
-    final glowPaint = Paint()
-      ..color = kNeonGreen.withOpacity(0.18)
-      ..strokeWidth = 7
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
-    canvas.drawPath(linePath, glowPaint);
+    canvas.drawPath(
+      linePath,
+      Paint()
+        ..color = kNeonGreen
+        ..strokeWidth = 2.2
+        ..strokeCap = StrokeCap.round
+        ..style = PaintingStyle.stroke,
+    );
 
-    // Dots + weight labels
+    canvas.drawPath(
+      linePath,
+      Paint()
+        ..color = kNeonGreen.withOpacity(0.18)
+        ..strokeWidth = 7
+        ..style = PaintingStyle.stroke
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+    );
+
+    // Dots + labels
     for (int i = 0; i < points.length; i++) {
-      // Outer ring
       canvas.drawCircle(
-        points[i],
-        5,
-        Paint()..color = kNeonGreen.withOpacity(0.25),
-      );
-      // Inner dot
-      canvas.drawCircle(
-        points[i],
-        3,
-        Paint()..color = kNeonGreen,
-      );
+          points[i], 5, Paint()..color = kNeonGreen.withOpacity(0.25));
+      canvas.drawCircle(points[i], 3, Paint()..color = kNeonGreen);
 
-      // Weight value above dot
       final tp = TextPainter(
         text: TextSpan(
           text: entries[i].weight.toStringAsFixed(1),
           style: TextStyle(
-            color: Colors.white.withOpacity(0.7),
-            fontSize: 9,
-            fontWeight: FontWeight.w600,
-          ),
+              color: Colors.white.withOpacity(0.7),
+              fontSize: 9,
+              fontWeight: FontWeight.w600),
         ),
         textDirection: TextDirection.ltr,
       )..layout();
-      tp.paint(canvas, Offset(points[i].dx - tp.width / 2, points[i].dy - 18));
+      tp.paint(canvas,
+          Offset(points[i].dx - tp.width / 2, points[i].dy - 18));
     }
   }
 
   @override
-  bool shouldRepaint(covariant _WeightChartPainter old) => old.entries != entries;
+  bool shouldRepaint(covariant _WeightChartPainter old) =>
+      old.entries != entries;
 }
 
-// ─── Circular Progress Painter (reused from home.dart) ────────────────────────
+// ─── Circular Progress Painter ────────────────────────────────────────────────
 
 class _CircularProgressPainter extends CustomPainter {
   final double progress;

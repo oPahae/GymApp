@@ -1,13 +1,16 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/models/client.dart';
 import 'package:test_hh/models/coach.dart';
 import 'package:test_hh/screens/login.dart';
-import 'package:test_hh/screens/profileClient.dart';
 import 'package:test_hh/services/api_service.dart';
+import 'package:test_hh/session/user_session.dart';
 
 class ProfileClient extends StatefulWidget {
   final int? clientId;
@@ -22,7 +25,8 @@ class _ProfileClientState extends State<ProfileClient> {
   bool _isLoading = true;
   String? _error;
   bool _isEditing = false;
-  File? _profileImage;
+  XFile? _profileImage;
+  String? _imageUrl;
 
   late TextEditingController _nameController;
   late TextEditingController _weightController;
@@ -88,34 +92,56 @@ class _ProfileClientState extends State<ProfileClient> {
     super.dispose();
   }
 
+  // --- Chargement du client ---
   Future<void> _loadClient() async {
     setState(() { _isLoading = true; _error = null; });
 
-    Map<String, dynamic> res;
-    if (widget.clientId != null) {
-      res = await ApiService.getClient(widget.clientId!);
-    } else {
-      res = await ApiService.getMe();
+    try {
+      bool sessionLoaded = await UserSession.instance.load();
+      if (!sessionLoaded && widget.clientId == null) {
+        setState(() { _error = 'Failed to load user session.'; _isLoading = false; });
+        return;
+      }
+
+      if (widget.clientId != null) {
+        final res = await ApiService.getClient(widget.clientId!);
+        if (!mounted) return;
+        if (res['success'] == true && res['client'] != null) {
+          _applyClient(Client.fromJson(res['client'] as Map<String, dynamic>));
+        } else {
+          setState(() { _error = res['message'] ?? 'Failed to load client.'; _isLoading = false; });
+        }
+      } else {
+        _applyClientFromSession();
+      }
+    } catch (e) {
+      setState(() { _error = 'An error occurred: $e'; _isLoading = false; });
     }
+  }
 
-    if (!mounted) return;
-
-    final rawClient = res['client'] ?? res['user'];
-
-    if (res['success'] == true && rawClient != null) {
-      final client = Client.fromJson(rawClient as Map<String, dynamic>);
-      _applyClient(client);
-    } else {
-      setState(() {
-        _error = res['message'] ?? 'Erreur de chargement.';
-        _isLoading = false;
-      });
-    }
+  void _applyClientFromSession() {
+    final session = UserSession.instance;
+    final client = Client(
+      id: session.id,
+      name: session.name,
+      email: session.email,
+      birth: DateTime.tryParse(session.birth) ?? DateTime.now(),
+      gender: session.gender,
+      weight: session.weight,
+      height: session.height,
+      weightGoal: session.weightGoal,
+      frequency: session.frequency,
+      goal: session.goal,
+      image: session.image,
+      coach: null,
+    );
+    _applyClient(client);
   }
 
   void _applyClient(Client client) {
     setState(() {
       _client = client;
+      _imageUrl = client.image.isNotEmpty ? client.image : null;
       _birthDate = client.birth;
       _weight = client.weight;
       _height = client.height;
@@ -129,9 +155,70 @@ class _ProfileClientState extends State<ProfileClient> {
     });
   }
 
+  // --- Upload vers Cloudinary ---
+  Future<String?> _uploadImageToCloudinary(XFile imageFile) async {
+    try {
+      final uri = Uri.parse("https://api.cloudinary.com/v1_1/dlqcknocf/image/upload");
+      final request = http.MultipartRequest("POST", uri);
+      request.fields['upload_preset'] = 'GymApp';
+
+      if (kIsWeb) {
+        final bytes = await imageFile.readAsBytes();
+        request.files.add(
+          http.MultipartFile.fromBytes('file', bytes, filename: imageFile.name),
+        );
+      } else {
+        request.files.add(
+          await http.MultipartFile.fromPath('file', imageFile.path),
+        );
+      }
+
+      final response = await request.send();
+      final res = await response.stream.bytesToString();
+      final data = jsonDecode(res);
+
+      if (response.statusCode == 200) {
+        return data['secure_url'] as String?;
+      } else {
+        debugPrint("Cloudinary error: $res");
+        return null;
+      }
+    } catch (e) {
+      debugPrint("Cloudinary exception: $e");
+      return null;
+    }
+  }
+
+  // --- Sélection d'image ---
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked != null) {
+      setState(() { _profileImage = picked; });
+    }
+  }
+
+  // --- Sauvegarde du profil ---
   Future<void> _saveClient() async {
     if (_client == null) return;
     _commitMetrics();
+
+    String? imageUrl = _imageUrl;
+    if (_profileImage != null) {
+      imageUrl = await _uploadImageToCloudinary(_profileImage!);
+      if (imageUrl == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.redAccent.withOpacity(0.9),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            content: const Text('Failed to upload image. Please try again.'),
+          ),
+        );
+        return;
+      }
+    }
 
     final res = await ApiService.updateClient(_client!.id, {
       'name': _nameController.text.trim(),
@@ -142,28 +229,36 @@ class _ProfileClientState extends State<ProfileClient> {
       'weightGoal': _weightGoal,
       'frequency': _frequency,
       'goal': _goal,
+      'image': imageUrl,
     });
 
     if (!mounted) return;
 
     if (res['success'] == true && res['client'] != null) {
       _applyClient(Client.fromJson(res['client'] as Map<String, dynamic>));
+      await UserSession.instance.load();
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: res['success'] == true ? kNeonGreen.withOpacity(0.9) : Colors.redAccent.withOpacity(0.9),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        content: Text(
-          res['success'] == true ? 'Profil sauvegardé !' : res['message'] ?? 'Erreur.',
-          style: const TextStyle(color: kDarkBg, fontWeight: FontWeight.w700),
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: res['success'] == true ? kNeonGreen.withOpacity(0.9) : Colors.redAccent.withOpacity(0.9),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: Text(
+            res['success'] == true ? 'Profile saved!' : res['message'] ?? 'Error.',
+            style: const TextStyle(color: kDarkBg, fontWeight: FontWeight.w700),
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
 
-  String _formattedDate(DateTime d) => '${d.day.toString().padLeft(2, '0')} / ${d.month.toString().padLeft(2, '0')} / ${d.year}';
+  // --- Autres méthodes utilitaires ---
+  String _formattedDate(DateTime? d) {
+    if (d == null) return '—';
+    return '${d.day.toString().padLeft(2, '0')} / ${d.month.toString().padLeft(2, '0')} / ${d.year}';
+  }
 
   int _age(DateTime d) {
     final now = DateTime.now();
@@ -185,12 +280,6 @@ class _ProfileClientState extends State<ProfileClient> {
     if (w != null) _weight = (_weightInKg ? w : w / 2.205).clamp(30, 300);
     if (h != null) _height = (_heightInCm ? h : h * 30.48).clamp(100, 250);
     if (g != null) _weightGoal = (_weightInKg ? g : g / 2.205).clamp(30, 300);
-  }
-
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery);
-    if (picked != null) setState(() => _profileImage = File(picked.path));
   }
 
   Future<void> _pickDate() async {
@@ -215,18 +304,24 @@ class _ProfileClientState extends State<ProfileClient> {
     } else {
       _syncControllers();
     }
-    setState(() => _isEditing = !_isEditing);
+    if (mounted) {
+      setState(() => _isEditing = !_isEditing);
+    }
   }
 
   Future<void> _logout() async {
     await ApiService.logout();
-    Navigator.pushAndRemoveUntil(
-    context,
-    MaterialPageRoute(builder: (_) => LoginScreen()),
-    (route) => false,
-  );
+    UserSession.instance.clear();
+    if (mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    }
   }
 
+  // --- UI ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -269,7 +364,7 @@ class _ProfileClientState extends State<ProfileClient> {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: kNeonGreen.withOpacity(0.4)),
                 ),
-                child: const Text('Réessayer', style: TextStyle(color: kNeonGreen, fontWeight: FontWeight.w700)),
+                child: const Text('Retry', style: TextStyle(color: kNeonGreen, fontWeight: FontWeight.w700)),
               ),
             ),
           ],
@@ -297,7 +392,7 @@ class _ProfileClientState extends State<ProfileClient> {
           const SizedBox(height: 14),
           _buildSection('MY COACH', _buildCoachInfo()),
           const SizedBox(height: 20),
-          _buildLogoutButton(), // Bouton de déconnexion ajouté ici
+          _buildLogoutButton(),
         ],
       ),
     );
@@ -443,11 +538,15 @@ class _ProfileClientState extends State<ProfileClient> {
                     boxShadow: [BoxShadow(color: kNeonGreen.withOpacity(0.15), blurRadius: 20)],
                   ),
                   child: _profileImage != null
-                      ? ClipOval(child: Image.file(_profileImage!, fit: BoxFit.cover))
-                      : (_client?.image.isNotEmpty == true
+                      ? ClipOval(
+                          child: kIsWeb
+                              ? Image.network(_profileImage!.path, fit: BoxFit.cover)
+                              : Image.file(File(_profileImage!.path), fit: BoxFit.cover),
+                        )
+                      : (_imageUrl != null && _imageUrl!.isNotEmpty
                           ? ClipOval(
                               child: Image.network(
-                                _client!.image,
+                                _imageUrl!,
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, __, ___) => const Icon(
                                   Icons.person_outline_rounded,

@@ -8,6 +8,7 @@ import 'package:test_hh/constants/urls.dart';
 import 'package:test_hh/models/food.dart';
 import 'package:test_hh/models/exercice.dart';
 import 'package:test_hh/models/dayProgram.dart';
+import 'package:test_hh/session/user_session.dart'; // ← UserSession
 
 enum _Meal { breakfast, lunch, dinner }
 
@@ -28,49 +29,64 @@ class ProgramCoachScreen extends StatefulWidget {
 }
 
 class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
-  static const _daysShort = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-  static const _daysFull = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  // ── Session ──────────────────────────────────────────────────────────────
+  final _session = UserSession.instance;
 
-  static const Map<String, String> _headers = {
-    'Content-Type': 'application/json',
-    'Authorization':
-        'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN6a3RqeG9pc3FsYm9ybmZjd2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5NzU1OTUsImV4cCI6MjA5MzU1MTU5NX0._SpvSTRsOBJmyxxQQZM98A0bilIvHMIlmVgB1i_CP68',
-  };
+  static const _daysShort = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+  static const _daysFull  = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+  /// Headers d'authentification construits depuis le token de session
+  Map<String, String> get _headers => {
+        'Content-Type': 'application/json',
+        // Le token est géré par ApiService / SharedPreferences ;
+        // on le lit via la session si disponible, sinon on laisse vide.
+        if (_session['token'] != null)
+          'Authorization': 'Bearer ${_session['token']}',
+      };
 
   int _selectedDay = 0;
-  bool _isSaving = false;
-  bool _loading = true;
+  bool _isSaving   = false;
+  bool _loading    = true;
   String? _error;
 
   late List<Map<String, List<dynamic>>> _week;
-  List<FoodModel> _allFoods = [];
+  List<FoodModel>    _allFoods     = [];
   List<ExerciceModel> _allExercises = [];
 
   @override
   void initState() {
     super.initState();
-    _week = List.generate(7, (_) => <String, List<dynamic>>{
-      'breakfast': <FoodModel>[],
-      'lunch': <FoodModel>[],
-      'dinner': <FoodModel>[],
-      'exercises': <ExerciceModel>[],
-    });
+    _week = List.generate(
+      7,
+      (_) => <String, List<dynamic>>{
+        'breakfast': <FoodModel>[],
+        'lunch': <FoodModel>[],
+        'dinner': <FoodModel>[],
+        'exercises': <ExerciceModel>[],
+      },
+    );
     _loadAll();
   }
 
   Future<void> _loadAll() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error   = null;
+    });
     try {
-      final results = await Future.wait([
+      await Future.wait([
         _fetchProgram(),
         _fetchFoods(),
         _fetchExercises(),
       ]);
       if (!mounted) return;
-      setState(() { _loading = false; });
+      setState(() => _loading = false);
     } catch (e) {
       if (!mounted) return;
-      setState(() { _error = e.toString(); _loading = false; });
+      setState(() {
+        _error   = e.toString();
+        _loading = false;
+      });
     }
   }
 
@@ -93,16 +109,20 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
         _week[i] = <String, List<dynamic>>{
           'breakfast': (d['breakfastFoods'] as List?)
                   ?.map((f) => FoodModel.fromJson(f))
-                  .toList() ?? <FoodModel>[],
+                  .toList() ??
+              <FoodModel>[],
           'lunch': (d['lunchFoods'] as List?)
                   ?.map((f) => FoodModel.fromJson(f))
-                  .toList() ?? <FoodModel>[],
+                  .toList() ??
+              <FoodModel>[],
           'dinner': (d['dinnerFoods'] as List?)
                   ?.map((f) => FoodModel.fromJson(f))
-                  .toList() ?? <FoodModel>[],
+                  .toList() ??
+              <FoodModel>[],
           'exercises': (d['exercises'] as List?)
                   ?.map((e) => ExerciceModel.fromJson(e))
-                  .toList() ?? <ExerciceModel>[],
+                  .toList() ??
+              <ExerciceModel>[],
         };
       }
     });
@@ -113,11 +133,7 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
     final res = await http.get(uri, headers: _headers);
     if (res.statusCode != 200) throw Exception('Failed to fetch foods');
 
-    final body = jsonDecode(res.body);
-    if (body is Map && body['success'] == false) {
-      throw Exception(body['message'] ?? 'API error');
-    }
-
+    final body     = jsonDecode(res.body);
     final List foodsData = body['data']?['foods'] ?? [];
     setState(() {
       _allFoods = foodsData.map((f) => FoodModel.fromJson(f)).toList();
@@ -129,11 +145,7 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
     final res = await http.get(uri, headers: _headers);
     if (res.statusCode != 200) throw Exception('Failed to fetch exercises');
 
-    final body = jsonDecode(res.body);
-    if (body is Map && body['success'] == false) {
-      throw Exception(body['message'] ?? 'API error');
-    }
-
+    final body   = jsonDecode(res.body);
     final List exData = body['data']?['exercises'] ?? [];
     setState(() {
       _allExercises = exData.map((e) => ExerciceModel.fromJson(e)).toList();
@@ -141,8 +153,8 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-  List<FoodModel> _foods(int day, _Meal m) => _week[day][m.name]! as List<FoodModel>;
-  List<ExerciceModel> _exes(int day) => _week[day]['exercises']! as List<ExerciceModel>;
+  List<FoodModel>     _foods(int day, _Meal m) => _week[day][m.name]!     as List<FoodModel>;
+  List<ExerciceModel> _exes(int day)            => _week[day]['exercises']! as List<ExerciceModel>;
 
   bool _dayHasContent(int day) =>
       _foods(day, _Meal.breakfast).isNotEmpty ||
@@ -169,9 +181,12 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
 
   Color _exTypeColor(ExerciceType t) {
     switch (t) {
-      case ExerciceType.cardio:      return const Color(0xFF3B82F6);
-      case ExerciceType.flexibility: return const Color(0xFF8B5CF6);
-      default:                       return const Color(0xFFEF4444);
+      case ExerciceType.cardio:
+        return const Color(0xFF3B82F6);
+      case ExerciceType.flexibility:
+        return const Color(0xFF8B5CF6);
+      default:
+        return const Color(0xFFEF4444);
     }
   }
 
@@ -180,43 +195,49 @@ class _ProgramCoachScreenState extends State<ProgramCoachScreen> {
     setState(() => _isSaving = true);
     try {
       final weekPayload = <Map<String, dynamic>>[];
-for (int i = 0; i < 7; i++) {
-  weekPayload.add({
-    'day': _daysFull[i],
-    'breakfastFoods': _foods(i, _Meal.breakfast).map((f) => {
-      'id': f.id,
-      'name': f.name,
-      'calories': f.calories,
-      'type': f.type.name,
-      'imageUrl': f.imageUrl,
-    }).toList(),
-    'lunchFoods': _foods(i, _Meal.lunch).map((f) => {
-      'id': f.id,
-      'name': f.name,
-      'calories': f.calories,
-      'type': f.type.name,
-      'imageUrl': f.imageUrl,
-    }).toList(),
-    'dinnerFoods': _foods(i, _Meal.dinner).map((f) => {
-      'id': f.id,
-      'name': f.name,
-      'calories': f.calories,
-      'type': f.type.name,
-      'imageUrl': f.imageUrl,
-    }).toList(),
-    'exercises': _exes(i).map((e) => {
-      'id': e.id,
-      'name': e.name,
-      'description': e.description,
-      'type': e.type.name,
-    }).toList(),
-  });
-}
-
+      for (int i = 0; i < 7; i++) {
+        weekPayload.add({
+          'day': _daysFull[i],
+          'breakfastFoods': _foods(i, _Meal.breakfast).map((f) => {
+                'id': f.id,
+                'name': f.name,
+                'calories': f.calories,
+                'type': f.type.name,
+                'imageUrl': f.imageUrl,
+              }).toList(),
+          'lunchFoods': _foods(i, _Meal.lunch).map((f) => {
+                'id': f.id,
+                'name': f.name,
+                'calories': f.calories,
+                'type': f.type.name,
+                'imageUrl': f.imageUrl,
+              }).toList(),
+          'dinnerFoods': _foods(i, _Meal.dinner).map((f) => {
+                'id': f.id,
+                'name': f.name,
+                'calories': f.calories,
+                'type': f.type.name,
+                'imageUrl': f.imageUrl,
+              }).toList(),
+          'exercises': _exes(i).map((e) => {
+                'id': e.id,
+                'name': e.name,
+                'description': e.description,
+                'type': e.type.name,
+              }).toList(),
+        });
+      }
 
       final uri = Uri.parse('$kBaseUrl/api/programCoach');
-      final res = await http.post(uri, headers: _headers,
-        body: jsonEncode({'clientId': int.tryParse(widget.clientId) ?? 1, 'week': weekPayload}),
+      final res = await http.post(
+        uri,
+        headers: _headers,
+        body: jsonEncode({
+          'clientId': int.tryParse(widget.clientId) ?? 1,
+          'week': weekPayload,
+          // On ajoute l'ID du coach connecté pour traçabilité côté API
+          'coachId': _session.id,
+        }),
       );
 
       if (res.statusCode != 200) {
@@ -237,8 +258,11 @@ for (int i = 0; i < 7; i++) {
           content: Row(children: [
             const Icon(Icons.check_circle_rounded, color: Colors.black, size: 18),
             const SizedBox(width: 8),
-            Text('Program saved for ${widget.clientName}!',
-                style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w700)),
+            Text(
+              'Program saved for ${widget.clientName}!',
+              style: const TextStyle(
+                  color: Colors.black, fontWeight: FontWeight.w700),
+            ),
           ]),
         ),
       );
@@ -252,8 +276,13 @@ for (int i = 0; i < 7; i++) {
           content: Row(children: [
             const Icon(Icons.error_rounded, color: Colors.white, size: 18),
             const SizedBox(width: 8),
-            Expanded(child: Text('Save failed: ${e.toString()}',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
+            Expanded(
+              child: Text(
+                'Save failed: ${e.toString()}',
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+            ),
           ]),
         ),
       );
@@ -287,14 +316,17 @@ for (int i = 0; i < 7; i++) {
           child: Column(children: [
             Container(
               margin: const EdgeInsets.only(top: 12),
-              width: 40, height: 4,
-              decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: Colors.white24, borderRadius: BorderRadius.circular(2)),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
               child: Row(children: [
                 Container(
-                  width: 34, height: 34,
+                  width: 34,
+                  height: 34,
                   decoration: BoxDecoration(
                     color: _mealColor(meal).withOpacity(0.15),
                     borderRadius: BorderRadius.circular(10),
@@ -304,7 +336,10 @@ for (int i = 0; i < 7; i++) {
                 const SizedBox(width: 12),
                 Text(
                   'Add to ${_mealLabel(meal)[0]}${_mealLabel(meal).substring(1).toLowerCase()}',
-                  style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800),
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800),
                 ),
               ]),
             ),
@@ -321,8 +356,10 @@ for (int i = 0; i < 7; i++) {
                   onChanged: (v) => setS(() => q = v),
                   decoration: InputDecoration(
                     hintText: 'Search...',
-                    hintStyle: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 14),
-                    prefixIcon: Icon(Icons.search, color: Colors.white.withOpacity(0.3), size: 20),
+                    hintStyle: TextStyle(
+                        color: Colors.white.withOpacity(0.3), fontSize: 14),
+                    prefixIcon: Icon(Icons.search,
+                        color: Colors.white.withOpacity(0.3), size: 20),
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.symmetric(vertical: 14),
                   ),
@@ -340,7 +377,8 @@ for (int i = 0; i < 7; i++) {
                         food: list[i],
                         accentColor: _mealColor(meal),
                         onAdd: () {
-                          setState(() => _foods(_selectedDay, meal).add(list[i]));
+                          setState(
+                              () => _foods(_selectedDay, meal).add(list[i]));
                           added.add(list[i].id);
                           setS(() {});
                         },
@@ -379,30 +417,43 @@ for (int i = 0; i < 7; i++) {
           child: Column(children: [
             Container(
               margin: const EdgeInsets.only(top: 12),
-              width: 40, height: 4,
-              decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: Colors.white24, borderRadius: BorderRadius.circular(2)),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
               child: Row(children: [
                 Container(
-                  width: 34, height: 34,
-                  decoration: BoxDecoration(color: kNeonGreen.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
-                  child: const Icon(Icons.fitness_center, color: kNeonGreen, size: 18),
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                      color: kNeonGreen.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(10)),
+                  child: const Icon(Icons.fitness_center,
+                      color: kNeonGreen, size: 18),
                 ),
                 const SizedBox(width: 12),
                 const Text('Add Exercise',
-                    style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800)),
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800)),
                 const Spacer(),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: kNeonGreen.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: kNeonGreen.withOpacity(0.3)),
                   ),
                   child: Text('${list.length}',
-                      style: const TextStyle(color: kNeonGreen, fontSize: 11, fontWeight: FontWeight.w700)),
+                      style: const TextStyle(
+                          color: kNeonGreen,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700)),
                 ),
               ]),
             ),
@@ -419,8 +470,10 @@ for (int i = 0; i < 7; i++) {
                   onChanged: (v) => setS(() => q = v),
                   decoration: InputDecoration(
                     hintText: 'Search exercises...',
-                    hintStyle: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 14),
-                    prefixIcon: Icon(Icons.search, color: Colors.white.withOpacity(0.3), size: 20),
+                    hintStyle: TextStyle(
+                        color: Colors.white.withOpacity(0.3), fontSize: 14),
+                    prefixIcon: Icon(Icons.search,
+                        color: Colors.white.withOpacity(0.3), size: 20),
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.symmetric(vertical: 14),
                   ),
@@ -432,13 +485,38 @@ for (int i = 0; i < 7; i++) {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(children: [
-                _SheetFilterChip(label: 'ALL',         isSelected: filterType == null,                       color: Colors.white54,          onTap: () => setS(() => filterType = null)),
+                _SheetFilterChip(
+                    label: 'ALL',
+                    isSelected: filterType == null,
+                    color: Colors.white54,
+                    onTap: () => setS(() => filterType = null)),
                 const SizedBox(width: 8),
-                _SheetFilterChip(label: 'STRENGTH',    isSelected: filterType == ExerciceType.strength,      color: const Color(0xFFEF4444), onTap: () => setS(() => filterType = filterType == ExerciceType.strength    ? null : ExerciceType.strength)),
+                _SheetFilterChip(
+                    label: 'STRENGTH',
+                    isSelected: filterType == ExerciceType.strength,
+                    color: const Color(0xFFEF4444),
+                    onTap: () => setS(() => filterType =
+                        filterType == ExerciceType.strength
+                            ? null
+                            : ExerciceType.strength)),
                 const SizedBox(width: 8),
-                _SheetFilterChip(label: 'CARDIO',      isSelected: filterType == ExerciceType.cardio,        color: const Color(0xFF3B82F6), onTap: () => setS(() => filterType = filterType == ExerciceType.cardio      ? null : ExerciceType.cardio)),
+                _SheetFilterChip(
+                    label: 'CARDIO',
+                    isSelected: filterType == ExerciceType.cardio,
+                    color: const Color(0xFF3B82F6),
+                    onTap: () => setS(() => filterType =
+                        filterType == ExerciceType.cardio
+                            ? null
+                            : ExerciceType.cardio)),
                 const SizedBox(width: 8),
-                _SheetFilterChip(label: 'FLEXIBILITY', isSelected: filterType == ExerciceType.flexibility,   color: const Color(0xFF8B5CF6), onTap: () => setS(() => filterType = filterType == ExerciceType.flexibility ? null : ExerciceType.flexibility)),
+                _SheetFilterChip(
+                    label: 'FLEXIBILITY',
+                    isSelected: filterType == ExerciceType.flexibility,
+                    color: const Color(0xFF8B5CF6),
+                    onTap: () => setS(() => filterType =
+                        filterType == ExerciceType.flexibility
+                            ? null
+                            : ExerciceType.flexibility)),
               ]),
             ),
             const SizedBox(height: 12),
@@ -466,31 +544,55 @@ for (int i = 0; i < 7; i++) {
   }
 
   Widget _buildSheetEmpty(String msg) => Center(
-    child: Padding(
-      padding: const EdgeInsets.only(bottom: 60),
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(Icons.search_off, color: Colors.white.withOpacity(0.12), size: 48),
-        const SizedBox(height: 10),
-        Text(msg, style: TextStyle(color: Colors.white.withOpacity(0.28), fontSize: 13,
-            fontWeight: FontWeight.w500)),
-      ]),
-    ),
-  );
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 60),
+          child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.search_off,
+                    color: Colors.white.withOpacity(0.12), size: 48),
+                const SizedBox(height: 10),
+                Text(msg,
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.28),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500)),
+              ]),
+        ),
+      );
 
   // ─── Build ────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    // Garde-fou : on vérifie que le coach est bien connecté
+    if (!_session.isLoaded || !_session.isCoach) {
+      return Scaffold(
+        backgroundColor: kDarkBg,
+        appBar: const Header(),
+        body: Center(
+          child: Text(
+            'Session invalide.\nVeuillez vous reconnecter.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                color: Colors.white.withOpacity(0.5), fontSize: 14),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: kDarkBg,
       appBar: const Header(),
-      // bottomNavigationBar: NavBar(),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _isSaving ? null : _save,
         backgroundColor: kNeonGreen,
         foregroundColor: Colors.black,
         icon: _isSaving
-            ? const SizedBox(width: 18, height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Colors.black))
             : const Icon(Icons.save_rounded),
         label: Text(
           _isSaving ? 'Saving...' : 'Save Program',
@@ -534,48 +636,55 @@ for (int i = 0; i < 7; i++) {
     );
   }
 
-  Widget _buildLoading() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: 28, height: 28,
-            child: CircularProgressIndicator(color: kNeonGreen, strokeWidth: 2.5),
-          ),
-          const SizedBox(height: 14),
-          Text('Loading program...',
-              style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildError() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.error_outline, size: 40, color: Colors.redAccent.withOpacity(0.6)),
-          const SizedBox(height: 12),
-          Text('Failed to load program',
-              style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 14, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 16),
-          GestureDetector(
-            onTap: _loadAll,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: kNeonGreen, width: 1.5)),
-              child: const Text('Retry',
-                  style: TextStyle(color: kNeonGreen, fontWeight: FontWeight.w700, fontSize: 13)),
+  Widget _buildLoading() => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(
+                  color: kNeonGreen, strokeWidth: 2.5),
             ),
-          ),
-        ],
-      ),
-    );
-  }
+            const SizedBox(height: 14),
+            Text('Loading program...',
+                style: TextStyle(
+                    color: Colors.white.withOpacity(0.4), fontSize: 13)),
+          ],
+        ),
+      );
+
+  Widget _buildError() => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline,
+                size: 40, color: Colors.redAccent.withOpacity(0.6)),
+            const SizedBox(height: 12),
+            Text('Failed to load program',
+                style: TextStyle(
+                    color: Colors.white.withOpacity(0.5),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600)),
+            const SizedBox(height: 16),
+            GestureDetector(
+              onTap: _loadAll,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 10),
+                decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: kNeonGreen, width: 1.5)),
+                child: const Text('Retry',
+                    style: TextStyle(
+                        color: kNeonGreen,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13)),
+              ),
+            ),
+          ],
+        ),
+      );
 
   // ─── Top bar ──────────────────────────────────────────────────────────────
   Widget _buildTopBar() {
@@ -583,34 +692,61 @@ for (int i = 0; i < 7; i++) {
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
       child: Row(children: [
         GestureDetector(
-          onTap: () { if (Navigator.canPop(context)) Navigator.pop(context); },
+          onTap: () {
+            if (Navigator.canPop(context)) Navigator.pop(context);
+          },
           child: Container(
-            width: 38, height: 38,
+            width: 38,
+            height: 38,
             decoration: BoxDecoration(
               color: kDarkCard,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.white10),
             ),
-            child: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 16),
+            child: const Icon(Icons.arrow_back_ios_new,
+                color: Colors.white, size: 16),
           ),
         ),
         const SizedBox(width: 14),
         Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('BUILD PROGRAM',
-                style: TextStyle(color: Colors.white, fontSize: 16,
-                    fontWeight: FontWeight.w800, letterSpacing: 2)),
-            Row(children: [
-              const Icon(Icons.person_rounded, color: kNeonGreen, size: 13),
-              const SizedBox(width: 4),
-              Text(widget.clientName,
-                  style: TextStyle(color: Colors.white.withOpacity(0.45),
-                      fontSize: 11, fontWeight: FontWeight.w500)),
-            ]),
-          ]),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('BUILD PROGRAM',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 2)),
+                Row(children: [
+                  // Nom du coach connecté depuis la session
+                  const Icon(Icons.sports_rounded, color: kNeonGreen, size: 13),
+                  const SizedBox(width: 4),
+                  Text(
+                    _session.name, // ← coach connecté
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.45),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(width: 6),
+                  Text('→', style: TextStyle(color: Colors.white.withOpacity(0.2), fontSize: 11)),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.person_rounded, color: kNeonGreen, size: 13),
+                  const SizedBox(width: 4),
+                  Text(
+                    widget.clientName, // ← client cible
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.45),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500),
+                  ),
+                ]),
+              ]),
         ),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
             color: kNeonGreen.withOpacity(0.12),
             borderRadius: BorderRadius.circular(20),
@@ -618,8 +754,11 @@ for (int i = 0; i < 7; i++) {
           ),
           child: Text(
             '$_filledDays/7 DAYS',
-            style: const TextStyle(color: kNeonGreen, fontSize: 11,
-                fontWeight: FontWeight.w700, letterSpacing: 0.6),
+            style: const TextStyle(
+                color: kNeonGreen,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.6),
           ),
         ),
       ]),
@@ -651,23 +790,28 @@ for (int i = 0; i < 7; i++) {
                   width: isSel ? 1.5 : 1,
                 ),
               ),
-              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Text(_daysShort[i],
-                    style: TextStyle(
-                      color: isSel ? kNeonGreen : Colors.white38,
-                      fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5,
-                    )),
-                const SizedBox(height: 4),
-                Container(
-                  width: 5, height: 5,
-                  decoration: BoxDecoration(
-                    color: hasContent
-                        ? (isSel ? kNeonGreen : kNeonGreen.withOpacity(0.45))
-                        : Colors.white12,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ]),
+              child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(_daysShort[i],
+                        style: TextStyle(
+                          color: isSel ? kNeonGreen : Colors.white38,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5,
+                        )),
+                    const SizedBox(height: 4),
+                    Container(
+                      width: 5,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: hasContent
+                            ? (isSel ? kNeonGreen : kNeonGreen.withOpacity(0.45))
+                            : Colors.white12,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ]),
             ),
           );
         },
@@ -689,22 +833,34 @@ for (int i = 0; i < 7; i++) {
         color: kDarkCard,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: kNeonGreen.withOpacity(0.2)),
-        boxShadow: [BoxShadow(color: kNeonGreen.withOpacity(0.05), blurRadius: 16)],
+        boxShadow: [
+          BoxShadow(color: kNeonGreen.withOpacity(0.05), blurRadius: 16)
+        ],
       ),
       child: Column(children: [
         Row(children: [
           Container(
-            width: 36, height: 36,
-            decoration: BoxDecoration(color: kNeonGreen.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
-            child: const Icon(Icons.local_fire_department, color: kNeonGreen, size: 20),
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+                color: kNeonGreen.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10)),
+            child: const Icon(Icons.local_fire_department,
+                color: kNeonGreen, size: 20),
           ),
           const SizedBox(width: 12),
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('Total Calories',
-                style: TextStyle(color: Colors.white38, fontSize: 11,
-                    fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+                style: TextStyle(
+                    color: Colors.white38,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5)),
             Text('${total.toInt()} kcal',
-                style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800)),
           ]),
           const Spacer(),
           Text('$exCount exercise${exCount != 1 ? 's' : ''}',
@@ -723,21 +879,22 @@ for (int i = 0; i < 7; i++) {
   }
 
   Widget _calChip(String emoji, double cal, Color color) => Expanded(
-    child: Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.2)),
-      ),
-      child: Column(children: [
-        Text(emoji, style: const TextStyle(fontSize: 14)),
-        const SizedBox(height: 2),
-        Text('${cal.toInt()} kcal',
-            style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
-      ]),
-    ),
-  );
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withOpacity(0.2)),
+          ),
+          child: Column(children: [
+            Text(emoji, style: const TextStyle(fontSize: 14)),
+            const SizedBox(height: 2),
+            Text('${cal.toInt()} kcal',
+                style: TextStyle(
+                    color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+          ]),
+        ),
+      );
 
   // ─── Meal section ─────────────────────────────────────────────────────────
   Widget _buildMealSection(_Meal meal) {
@@ -747,14 +904,20 @@ for (int i = 0; i < 7; i++) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         Container(
-          width: 30, height: 30,
-          decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(8)),
           child: Icon(_mealIcon(meal), color: color, size: 16),
         ),
         const SizedBox(width: 10),
         Text(_mealLabel(meal),
-            style: const TextStyle(color: Colors.white, fontSize: 13,
-                fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.2)),
         const SizedBox(width: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -764,13 +927,15 @@ for (int i = 0; i < 7; i++) {
             border: Border.all(color: color.withOpacity(0.3)),
           ),
           child: Text('${foods.length}',
-              style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+              style: TextStyle(
+                  color: color, fontSize: 11, fontWeight: FontWeight.w700)),
         ),
         const Spacer(),
         GestureDetector(
           onTap: () => _openFoodPicker(meal),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: color.withOpacity(0.1),
               borderRadius: BorderRadius.circular(20),
@@ -779,7 +944,11 @@ for (int i = 0; i < 7; i++) {
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.add_rounded, color: color, size: 14),
               const SizedBox(width: 4),
-              Text('Add', style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700)),
+              Text('Add',
+                  style: TextStyle(
+                      color: color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700)),
             ]),
           ),
         ),
@@ -788,30 +957,33 @@ for (int i = 0; i < 7; i++) {
       if (foods.isEmpty)
         _buildEmptySlot(color)
       else
-        ...foods.asMap().entries.map((e) => _buildFoodCard(e.value, color, meal, e.key)),
+        ...foods.asMap().entries.map((e) =>
+            _buildFoodCard(e.value, color, meal, e.key)),
     ]);
   }
 
   Widget _buildEmptySlot(Color color) => Container(
-    margin: const EdgeInsets.only(bottom: 4),
-    padding: const EdgeInsets.symmetric(vertical: 16),
-    decoration: BoxDecoration(
-      color: color.withOpacity(0.04),
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: color.withOpacity(0.12)),
-    ),
-    child: Center(
-      child: Text('No food added yet',
-          style: TextStyle(color: color.withOpacity(0.35), fontSize: 12)),
-    ),
-  );
+        margin: const EdgeInsets.only(bottom: 4),
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withOpacity(0.12)),
+        ),
+        child: Center(
+          child: Text('No food added yet',
+              style: TextStyle(
+                  color: color.withOpacity(0.35), fontSize: 12)),
+        ),
+      );
 
   // ─── Food card ────────────────────────────────────────────────────────────
   Widget _buildFoodCard(FoodModel food, Color accent, _Meal meal, int idx) {
     return Dismissible(
       key: Key('food_${meal.name}_${food.id}_$idx'),
       direction: DismissDirection.endToStart,
-      onDismissed: (_) => setState(() => _foods(_selectedDay, meal).removeAt(idx)),
+      onDismissed: (_) =>
+          setState(() => _foods(_selectedDay, meal).removeAt(idx)),
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 16),
@@ -820,32 +992,41 @@ for (int i = 0; i < 7; i++) {
           color: Colors.red.withOpacity(0.12),
           borderRadius: BorderRadius.circular(16),
         ),
-        child: const Icon(Icons.delete_rounded, color: Colors.redAccent, size: 20),
+        child: const Icon(Icons.delete_rounded,
+            color: Colors.redAccent, size: 20),
       ),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
-        decoration: BoxDecoration(color: kDarkCard, borderRadius: BorderRadius.circular(16)),
+        decoration: BoxDecoration(
+            color: kDarkCard, borderRadius: BorderRadius.circular(16)),
         clipBehavior: Clip.hardEdge,
         child: Row(children: [
           SizedBox(
-            width: 80, height: 80,
+            width: 80,
+            height: 80,
             child: Stack(fit: StackFit.expand, children: [
               food.imageUrl.isNotEmpty
-                  ? Image.network(food.imageUrl, fit: BoxFit.cover,
+                  ? Image.network(food.imageUrl,
+                      fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => Container(
-                        color: const Color(0xFF1A1A1A),
-                        child: const Icon(Icons.fastfood, color: Colors.white24, size: 24),
-                      ))
+                            color: const Color(0xFF1A1A1A),
+                            child: const Icon(Icons.fastfood,
+                                color: Colors.white24, size: 24),
+                          ))
                   : Container(
                       color: const Color(0xFF1A1A1A),
-                      child: const Icon(Icons.fastfood, color: Colors.white24, size: 24),
+                      child: const Icon(Icons.fastfood,
+                          color: Colors.white24, size: 24),
                     ),
               Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.centerLeft,
                     end: Alignment.centerRight,
-                    colors: [Colors.transparent, kDarkCard.withOpacity(0.65)],
+                    colors: [
+                      Colors.transparent,
+                      kDarkCard.withOpacity(0.65)
+                    ],
                   ),
                 ),
               ),
@@ -853,24 +1034,34 @@ for (int i = 0; i < 7; i++) {
           ),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                _typeChip(food.typeLabel, accent),
-                const SizedBox(height: 5),
-                Text(food.name,
-                    style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 3),
-                Text(food.calLabel,
-                    style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11,
-                        fontWeight: FontWeight.w500)),
-              ]),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 12),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _typeChip(food.typeLabel, accent),
+                    const SizedBox(height: 5),
+                    Text(food.name,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 3),
+                    Text(food.calLabel,
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.4),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500)),
+                  ]),
             ),
           ),
           GestureDetector(
-            onTap: () => setState(() => _foods(_selectedDay, meal).removeAt(idx)),
+            onTap: () =>
+                setState(() => _foods(_selectedDay, meal).removeAt(idx)),
             child: Padding(
               padding: const EdgeInsets.only(right: 14),
-              child: Icon(Icons.close_rounded, color: Colors.white24, size: 18),
+              child: Icon(Icons.close_rounded,
+                  color: Colors.white24, size: 18),
             ),
           ),
         ]),
@@ -884,14 +1075,20 @@ for (int i = 0; i < 7; i++) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         Container(
-          width: 30, height: 30,
-          decoration: BoxDecoration(color: kNeonGreen.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+              color: kNeonGreen.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(8)),
           child: const Icon(Icons.fitness_center, color: kNeonGreen, size: 16),
         ),
         const SizedBox(width: 10),
         const Text('EXERCISES',
-            style: TextStyle(color: Colors.white, fontSize: 13,
-                fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.2)),
         const SizedBox(width: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -901,13 +1098,15 @@ for (int i = 0; i < 7; i++) {
             border: Border.all(color: kNeonGreen.withOpacity(0.3)),
           ),
           child: Text('${exes.length}',
-              style: const TextStyle(color: kNeonGreen, fontSize: 11, fontWeight: FontWeight.w700)),
+              style: const TextStyle(
+                  color: kNeonGreen, fontSize: 11, fontWeight: FontWeight.w700)),
         ),
         const Spacer(),
         GestureDetector(
           onTap: _openExercisePicker,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: kNeonGreen.withOpacity(0.1),
               borderRadius: BorderRadius.circular(20),
@@ -916,7 +1115,11 @@ for (int i = 0; i < 7; i++) {
             child: const Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.add_rounded, color: kNeonGreen, size: 14),
               SizedBox(width: 4),
-              Text('Add', style: TextStyle(color: kNeonGreen, fontSize: 12, fontWeight: FontWeight.w700)),
+              Text('Add',
+                  style: TextStyle(
+                      color: kNeonGreen,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700)),
             ]),
           ),
         ),
@@ -932,7 +1135,8 @@ for (int i = 0; i < 7; i++) {
           ),
           child: Center(
             child: Text('No exercise added yet',
-                style: TextStyle(color: kNeonGreen.withOpacity(0.35), fontSize: 12)),
+                style: TextStyle(
+                    color: kNeonGreen.withOpacity(0.35), fontSize: 12)),
           ),
         )
       else
@@ -940,7 +1144,7 @@ for (int i = 0; i < 7; i++) {
     ]);
   }
 
-  // ─── Exercise card ───────────────────────────────────────────────────────
+  // ─── Exercise card ────────────────────────────────────────────────────────
   Widget _buildExerciseCard(ExerciceModel ex, int idx) {
     final typeColor = _exTypeColor(ex.type);
     return Dismissible(
@@ -955,28 +1159,33 @@ for (int i = 0; i < 7; i++) {
           color: Colors.red.withOpacity(0.12),
           borderRadius: BorderRadius.circular(20),
         ),
-        child: const Icon(Icons.delete_rounded, color: Colors.redAccent, size: 20),
+        child: const Icon(Icons.delete_rounded,
+            color: Colors.redAccent, size: 20),
       ),
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
           color: kDarkCard,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withOpacity(0.05)),
+          border:
+              Border.all(color: Colors.white.withOpacity(0.05)),
         ),
         clipBehavior: Clip.hardEdge,
         child: SizedBox(
           height: 90,
           child: Stack(fit: StackFit.expand, children: [
             ex.image.isNotEmpty
-                ? Image.network(ex.image, fit: BoxFit.cover,
+                ? Image.network(ex.image,
+                    fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => Container(
-                      color: const Color(0xFF1A1A1A),
-                      child: const Icon(Icons.fitness_center, color: Colors.white12, size: 28),
-                    ))
+                          color: const Color(0xFF1A1A1A),
+                          child: const Icon(Icons.fitness_center,
+                              color: Colors.white12, size: 28),
+                        ))
                 : Container(
                     color: const Color(0xFF1A1A1A),
-                    child: const Icon(Icons.fitness_center, color: Colors.white12, size: 28),
+                    child: const Icon(Icons.fitness_center,
+                        color: Colors.white12, size: 28),
                   ),
             Container(
               decoration: BoxDecoration(
@@ -989,7 +1198,8 @@ for (int i = 0; i < 7; i++) {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 14, vertical: 12),
               child: Row(children: [
                 const SizedBox(width: 70),
                 Expanded(
@@ -1000,20 +1210,27 @@ for (int i = 0; i < 7; i++) {
                       _typeChip(ex.typeLabel, typeColor),
                       const SizedBox(height: 5),
                       Text(ex.name,
-                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700)),
                       const SizedBox(height: 3),
                       Text(
                         '${ex.description}  ·  ${ex.part.name}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: Colors.white.withOpacity(0.38), fontSize: 11),
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.38),
+                            fontSize: 11),
                       ),
                     ],
                   ),
                 ),
                 GestureDetector(
-                  onTap: () => setState(() => _exes(_selectedDay).removeAt(idx)),
-                  child: const Icon(Icons.close_rounded, color: Colors.white24, size: 20),
+                  onTap: () =>
+                      setState(() => _exes(_selectedDay).removeAt(idx)),
+                  child: const Icon(Icons.close_rounded,
+                      color: Colors.white24, size: 20),
                 ),
               ]),
             ),
@@ -1024,15 +1241,19 @@ for (int i = 0; i < 7; i++) {
   }
 
   Widget _typeChip(String label, Color color) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-    decoration: BoxDecoration(
-      color: color.withOpacity(0.1),
-      borderRadius: BorderRadius.circular(6),
-      border: Border.all(color: color.withOpacity(0.22), width: 1),
-    ),
-    child: Text(label,
-        style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.6)),
-  );
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: color.withOpacity(0.22), width: 1),
+        ),
+        child: Text(label,
+            style: TextStyle(
+                color: color,
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.6)),
+      );
 }
 
 // ─── Food Picker Tile ─────────────────────────────────────────────────────────
@@ -1041,7 +1262,8 @@ class _FoodPickerTile extends StatefulWidget {
   final FoodModel    food;
   final Color        accentColor;
   final VoidCallback onAdd;
-  const _FoodPickerTile({required this.food, required this.accentColor, required this.onAdd});
+  const _FoodPickerTile(
+      {required this.food, required this.accentColor, required this.onAdd});
 
   @override
   State<_FoodPickerTile> createState() => _FoodPickerTileState();
@@ -1057,22 +1279,29 @@ class _FoodPickerTileState extends State<_FoodPickerTile> {
       decoration: BoxDecoration(
         color: _added ? widget.accentColor.withOpacity(0.07) : kDarkCard,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _added ? widget.accentColor.withOpacity(0.3) : Colors.white10),
+        border: Border.all(
+            color: _added
+                ? widget.accentColor.withOpacity(0.3)
+                : Colors.white10),
       ),
       clipBehavior: Clip.hardEdge,
       child: Row(children: [
         SizedBox(
-          width: 64, height: 64,
+          width: 64,
+          height: 64,
           child: Stack(fit: StackFit.expand, children: [
             widget.food.imageUrl.isNotEmpty
-                ? Image.network(widget.food.imageUrl, fit: BoxFit.cover,
+                ? Image.network(widget.food.imageUrl,
+                    fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => Container(
-                      color: const Color(0xFF1A1A1A),
-                      child: const Icon(Icons.fastfood, color: Colors.white24, size: 22),
-                    ))
+                          color: const Color(0xFF1A1A1A),
+                          child: const Icon(Icons.fastfood,
+                              color: Colors.white24, size: 22),
+                        ))
                 : Container(
                     color: const Color(0xFF1A1A1A),
-                    child: const Icon(Icons.fastfood, color: Colors.white24, size: 22),
+                    child: const Icon(Icons.fastfood,
+                        color: Colors.white24, size: 22),
                   ),
             Container(
               decoration: BoxDecoration(
@@ -1088,22 +1317,35 @@ class _FoodPickerTileState extends State<_FoodPickerTile> {
         Expanded(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(widget.food.name,
-                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 3),
-              Text(widget.food.calLabel,
-                  style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11,
-                      fontWeight: FontWeight.w500)),
-            ]),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(widget.food.name,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 3),
+                  Text(widget.food.calLabel,
+                      style: TextStyle(
+                          color: Colors.white.withOpacity(0.4),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500)),
+                ]),
           ),
         ),
         GestureDetector(
-          onTap: _added ? null : () { setState(() => _added = true); widget.onAdd(); },
+          onTap: _added
+              ? null
+              : () {
+                  setState(() => _added = true);
+                  widget.onAdd();
+                },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             margin: const EdgeInsets.only(right: 14),
-            width: 32, height: 32,
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
               color: _added
                   ? widget.accentColor.withOpacity(0.2)
@@ -1112,7 +1354,8 @@ class _FoodPickerTileState extends State<_FoodPickerTile> {
             ),
             child: Icon(
               _added ? Icons.check_rounded : Icons.add_rounded,
-              color: widget.accentColor, size: 18,
+              color: widget.accentColor,
+              size: 18,
             ),
           ),
         ),
@@ -1127,7 +1370,8 @@ class _ExercisePickerTile extends StatefulWidget {
   final ExerciceModel exercise;
   final Color         typeColor;
   final VoidCallback  onAdd;
-  const _ExercisePickerTile({required this.exercise, required this.typeColor, required this.onAdd});
+  const _ExercisePickerTile(
+      {required this.exercise, required this.typeColor, required this.onAdd});
 
   @override
   State<_ExercisePickerTile> createState() => _ExercisePickerTileState();
@@ -1144,7 +1388,9 @@ class _ExercisePickerTileState extends State<_ExercisePickerTile> {
         color: _added ? kNeonGreen.withOpacity(0.06) : kDarkCard,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: _added ? kNeonGreen.withOpacity(0.3) : Colors.white.withOpacity(0.05),
+          color: _added
+              ? kNeonGreen.withOpacity(0.3)
+              : Colors.white.withOpacity(0.05),
         ),
       ),
       clipBehavior: Clip.hardEdge,
@@ -1152,14 +1398,17 @@ class _ExercisePickerTileState extends State<_ExercisePickerTile> {
         height: 80,
         child: Stack(fit: StackFit.expand, children: [
           widget.exercise.image.isNotEmpty
-              ? Image.network(widget.exercise.image, fit: BoxFit.cover,
+              ? Image.network(widget.exercise.image,
+                  fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => Container(
-                    color: const Color(0xFF1A1A1A),
-                    child: const Icon(Icons.fitness_center, color: Colors.white12, size: 26),
-                  ))
+                        color: const Color(0xFF1A1A1A),
+                        child: const Icon(Icons.fitness_center,
+                            color: Colors.white12, size: 26),
+                      ))
               : Container(
                   color: const Color(0xFF1A1A1A),
-                  child: const Icon(Icons.fitness_center, color: Colors.white12, size: 26),
+                  child: const Icon(Icons.fitness_center,
+                      color: Colors.white12, size: 26),
                 ),
           Container(
             decoration: BoxDecoration(
@@ -1172,7 +1421,8 @@ class _ExercisePickerTileState extends State<_ExercisePickerTile> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             child: Row(children: [
               const SizedBox(width: 55),
               Expanded(
@@ -1181,37 +1431,57 @@ class _ExercisePickerTileState extends State<_ExercisePickerTile> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 3),
                       decoration: BoxDecoration(
                         color: widget.typeColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: widget.typeColor.withOpacity(0.22), width: 1),
+                        border: Border.all(
+                            color: widget.typeColor.withOpacity(0.22),
+                            width: 1),
                       ),
                       child: Text(widget.exercise.typeLabel,
-                          style: TextStyle(color: widget.typeColor, fontSize: 9,
-                              fontWeight: FontWeight.w700, letterSpacing: 0.6)),
+                          style: TextStyle(
+                              color: widget.typeColor,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.6)),
                     ),
                     const SizedBox(height: 5),
                     Text(widget.exercise.name,
-                        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700)),
                     const SizedBox(height: 3),
                     Text(widget.exercise.part.name,
-                        style: TextStyle(color: Colors.white.withOpacity(0.38), fontSize: 11)),
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.38),
+                            fontSize: 11)),
                   ],
                 ),
               ),
               GestureDetector(
-                onTap: _added ? null : () { setState(() => _added = true); widget.onAdd(); },
+                onTap: _added
+                    ? null
+                    : () {
+                        setState(() => _added = true);
+                        widget.onAdd();
+                      },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  width: 32, height: 32,
+                  width: 32,
+                  height: 32,
                   decoration: BoxDecoration(
-                    color: _added ? kNeonGreen.withOpacity(0.2) : kNeonGreen.withOpacity(0.15),
+                    color: _added
+                        ? kNeonGreen.withOpacity(0.2)
+                        : kNeonGreen.withOpacity(0.15),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     _added ? Icons.check_rounded : Icons.add_rounded,
-                    color: kNeonGreen, size: 18,
+                    color: kNeonGreen,
+                    size: 18,
                   ),
                 ),
               ),
@@ -1226,12 +1496,15 @@ class _ExercisePickerTileState extends State<_ExercisePickerTile> {
 // ─── Sheet Filter Chip ────────────────────────────────────────────────────────
 
 class _SheetFilterChip extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final Color color;
+  final String       label;
+  final bool         isSelected;
+  final Color        color;
   final VoidCallback onTap;
-  const _SheetFilterChip({required this.label, required this.isSelected,
-      required this.color, required this.onTap});
+  const _SheetFilterChip(
+      {required this.label,
+      required this.isSelected,
+      required this.color,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1250,7 +1523,9 @@ class _SheetFilterChip extends StatelessWidget {
         child: Text(label,
             style: TextStyle(
               color: isSelected ? color : Colors.white38,
-              fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.6,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.6,
             )),
       ),
     );
