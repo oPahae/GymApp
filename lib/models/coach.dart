@@ -3,7 +3,7 @@ import 'package:test_hh/models/client.dart';
 class Coach {
   final int id;
   final String name;
-  final DateTime createdAt;
+  final DateTime? createdAt; // Rendu optionnel
   final String image;
   final List<Client> clients;
   final String? specialty;
@@ -12,7 +12,7 @@ class Coach {
   const Coach({
     required this.id,
     required this.name,
-    required this.createdAt,
+    this.createdAt, // Optionnel
     required this.image,
     List<Client>? clients,
     this.specialty,
@@ -21,9 +21,11 @@ class Coach {
 
   factory Coach.fromJson(Map<String, dynamic> json) {
     return Coach(
-      id: json['id'],
-      name: json['name'],
-      createdAt: DateTime.parse(json['createdAt']),
+      id: json['id'] ?? 0,
+      name: json['name'] ?? '',
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'])
+          : null, // Optionnel
       image: json['image'] ?? '',
       clients: json['clients'] != null
           ? (json['clients'] as List)
@@ -35,15 +37,17 @@ class Coach {
     );
   }
 
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'createdAt': createdAt.toIso8601String(),
-        'image': image,
-        'clients': clients.map((c) => c.toJson()).toList(),
-        'specialty': specialty,
-        'bio': bio,
-      };
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      if (createdAt != null) 'createdAt': createdAt!.toIso8601String(), // Optionnel
+      'image': image,
+      'clients': clients.map((c) => c.toJson()).toList(),
+      if (specialty != null) 'specialty': specialty, // Optionnel
+      if (bio != null) 'bio': bio, // Optionnel
+    };
+  }
 
   Coach copyWith({
     int? id,
@@ -53,14 +57,15 @@ class Coach {
     List<Client>? clients,
     String? specialty,
     String? bio,
-  }) =>
-      Coach(
-        id:        id        ?? this.id,
-        name:      name      ?? this.name,
-        createdAt: createdAt ?? this.createdAt,
-        image:     image     ?? this.image,
-        clients:   clients   ?? this.clients,
-        specialty: specialty ?? this.specialty,
-        bio:       bio       ?? this.bio,
-      );
+  }) {
+    return Coach(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      createdAt: createdAt ?? this.createdAt,
+      image: image ?? this.image,
+      clients: clients ?? this.clients,
+      specialty: specialty ?? this.specialty,
+      bio: bio ?? this.bio,
+    );
+  }
 }

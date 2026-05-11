@@ -5,8 +5,8 @@ import 'package:http/http.dart' as http;
 import 'package:test_hh/components/header.dart';
 import 'package:test_hh/components/navbar.dart';
 import 'package:test_hh/constants/colors.dart';
-import 'package:test_hh/models/client.dart';
 import 'package:test_hh/constants/urls.dart';
+import 'package:test_hh/session/user_session.dart'; // ← UserSession
 
 // ─── Model ────────────────────────────────────────────────────────────────────
 
@@ -19,24 +19,7 @@ class WeightEntry {
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 class StatScreen extends StatefulWidget {
-  StatScreen({super.key});
-
-  final Client client = Client(
-    id: 1,
-    name: 'Test User',
-    image: 'https://i.pravatar.cc/150?img=1',
-    birth: DateTime(1995, 6, 15),
-    weight: 80,
-    height: 175,
-    frequency: 4,
-    goal: 'Perte de poids',
-    weightGoal: 70,
-    createdAt: DateTime(2024, 1, 1),
-    coachID: 1,
-    gender: 'male',
-    email: '',
-    password: '',
-  );
+  const StatScreen({super.key});
 
   @override
   State<StatScreen> createState() => _StatScreenState();
@@ -44,10 +27,13 @@ class StatScreen extends StatefulWidget {
 
 class _StatScreenState extends State<StatScreen>
     with SingleTickerProviderStateMixin {
+  // ── Session ──────────────────────────────────────────────────────────────
+  final _session = UserSession.instance;
+
   late AnimationController _barCtrl;
   late Animation<double> _barAnim;
 
-  // ── State de l'historique ─────────────────────────────────────────────────
+  // ── État de l'historique ──────────────────────────────────────────────────
   List<WeightEntry> _history = [];
   bool _loadingHistory = true;
   String? _historyError;
@@ -70,15 +56,17 @@ class _StatScreenState extends State<StatScreen>
   }
 
   // ── API ───────────────────────────────────────────────────────────────────
-
   Future<void> _fetchWeightHistory() async {
     setState(() {
       _loadingHistory = true;
-      _historyError = null;
+      _historyError   = null;
     });
     try {
-      final uri = Uri.parse('$kBaseUrl/api/stat/${widget.client.id}/weight-history');
-      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+      // On utilise l'ID du client connecté depuis la session
+      final uri = Uri.parse(
+          '$kBaseUrl/api/stat/${_session.id}/weight-history');
+      final response =
+          await http.get(uri).timeout(const Duration(seconds: 10));
 
       if (response.statusCode != 200) {
         throw Exception('Erreur ${response.statusCode}');
@@ -87,39 +75,39 @@ class _StatScreenState extends State<StatScreen>
       final body = jsonDecode(response.body) as Map<String, dynamic>;
       if (body['success'] != true) throw Exception(body['message']);
 
-      final list = body['data'] as List<dynamic>;
+      final list    = body['data'] as List<dynamic>;
       final entries = list.map((e) {
         final map = e as Map<String, dynamic>;
         return WeightEntry(
-          date: DateTime.parse(map['date'] as String),
+          date:   DateTime.parse(map['date'] as String),
           weight: (map['weight'] as num).toDouble(),
         );
       }).toList();
 
       setState(() {
-        _history = entries;
+        _history        = entries;
         _loadingHistory = false;
       });
 
-      // Lance l'animation de la barre de progression une fois les données prêtes
-      Future.delayed(const Duration(milliseconds: 300), _barCtrl.forward);
+      Future.delayed(
+          const Duration(milliseconds: 300), _barCtrl.forward);
     } catch (e) {
       setState(() {
-        _historyError = e.toString();
+        _historyError   = e.toString();
         _loadingHistory = false;
       });
-      // Lance quand même l'animation avec ratio 0
-      Future.delayed(const Duration(milliseconds: 300), _barCtrl.forward);
+      Future.delayed(
+          const Duration(milliseconds: 300), _barCtrl.forward);
     }
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
-  double get _start =>
-      _history.isNotEmpty ? _history.first.weight : widget.client.weight;
-  double get _current => widget.client.weight;
-  double get _goal => widget.client.weightGoal;
-  double get _change => _current - _start;
+  // ── Helpers (lisent la session au lieu d'un objet Client hardcodé) ────────
+  double get _start   => _history.isNotEmpty
+      ? _history.first.weight
+      : _session.weight;
+  double get _current => _session.weight;
+  double get _goal    => _session.weightGoal;
+  double get _change  => _current - _start;
   double get _remaining => (_current - _goal).abs();
 
   double get _ratio {
@@ -129,45 +117,47 @@ class _StatScreenState extends State<StatScreen>
   }
 
   double get _bmi {
-    final h = widget.client.height / 100;
-    return widget.client.weight / (h * h);
+    final h = _session.height / 100;
+    if (h == 0) return 0;
+    return _session.weight / (h * h);
   }
 
   String get _bmiLabel {
     if (_bmi < 18.5) return 'INSUFFISANT';
-    if (_bmi < 25) return 'NORMAL';
-    if (_bmi < 30) return 'SURPOIDS';
+    if (_bmi < 25)   return 'NORMAL';
+    if (_bmi < 30)   return 'SURPOIDS';
     return 'OBÉSITÉ';
   }
 
   Color get _bmiColor {
     if (_bmi < 18.5) return const Color(0xFF5BC4F5);
-    if (_bmi < 25) return kNeonGreen;
-    if (_bmi < 30) return const Color(0xFFFFA940);
+    if (_bmi < 25)   return kNeonGreen;
+    if (_bmi < 30)   return const Color(0xFFFFA940);
     return const Color(0xFFFF6B6B);
   }
 
   int get _age {
+    if (_session.birth.isEmpty) return 0;
+    final birth = DateTime.tryParse(_session.birth);
+    if (birth == null) return 0;
     final n = DateTime.now();
-    int a = n.year - widget.client.birth.year;
-    if (n.month < widget.client.birth.month ||
-        (n.month == widget.client.birth.month &&
-            n.day < widget.client.birth.day))
-      a--;
+    int a = n.year - birth.year;
+    if (n.month < birth.month ||
+        (n.month == birth.month && n.day < birth.day)) a--;
     return a;
   }
 
   String get _eta {
-    if (_history.length < 2) return '—';
-    if (_remaining < 0.5) return 'Atteint !';
-    final months = _history.length - 1;
+    if (_history.length < 2)  return '—';
+    if (_remaining < 0.5)     return 'Atteint !';
+    final months     = _history.length - 1;
     final totalDelta = _history.last.weight - _history.first.weight;
     if (months == 0 || totalDelta.abs() < 0.1) return '—';
-    final rate = totalDelta / months;
+    final rate   = totalDelta / months;
     if (rate.abs() < 0.05) return '—';
     final needed = (_current - _goal) / rate;
     if (needed <= 0) return 'Atteint !';
-    final r = needed.round();
+    final r  = needed.round();
     if (r < 1) return '< 1 mois';
     if (r < 12) return '$r mois';
     final yr = r ~/ 12;
@@ -180,9 +170,20 @@ class _StatScreenState extends State<StatScreen>
   // ── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    // Garde-fou : session non chargée
+    if (!_session.isLoaded) {
+      return Scaffold(
+        backgroundColor: kDarkBg,
+        appBar: const Header(),
+        body: const Center(
+          child: CircularProgressIndicator(color: kNeonGreen),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: kDarkBg,
-      appBar: Header(),
+      appBar: const Header(),
       body: SafeArea(
         child: Column(
           children: [
@@ -228,11 +229,8 @@ class _StatScreenState extends State<StatScreen>
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.white10),
               ),
-              child: const Icon(
-                Icons.arrow_back_ios_new,
-                color: Colors.white,
-                size: 16,
-              ),
+              child: const Icon(Icons.arrow_back_ios_new,
+                  color: Colors.white, size: 16),
             ),
           ),
           const SizedBox(width: 14),
@@ -250,7 +248,7 @@ class _StatScreenState extends State<StatScreen>
                   ),
                 ),
                 Text(
-                  widget.client.name,
+                  _session.name, // ← depuis la session
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.38),
                     fontSize: 11,
@@ -279,15 +277,29 @@ class _StatScreenState extends State<StatScreen>
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.network(
-            widget.client.image,
-            fit: BoxFit.cover,
-            alignment: Alignment.topCenter,
-            errorBuilder: (_, __, ___) => Container(
-              color: const Color(0xFF1A1A1A),
-              child: const Icon(Icons.person, color: Colors.white12, size: 32),
-            ),
-          ),
+          _session.image.isNotEmpty
+              ? Image.network(
+                  _session.image, // ← depuis la session
+                  fit: BoxFit.cover,
+                  alignment: Alignment.topCenter,
+                  errorBuilder: (_, __, ___) => Container(
+                    color: const Color(0xFF1A1A1A),
+                    child: const Icon(Icons.person,
+                        color: Colors.white12, size: 32),
+                  ),
+                )
+              : Container(
+                  color: const Color(0xFF1A1A1A),
+                  child: Center(
+                    child: Text(
+                      _session.name.isNotEmpty ? _session.name[0] : '?',
+                      style: const TextStyle(
+                          color: kNeonGreen,
+                          fontSize: 32,
+                          fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -311,7 +323,7 @@ class _StatScreenState extends State<StatScreen>
                       _chip('CLIENT', kNeonGreen),
                       const SizedBox(height: 5),
                       Text(
-                        widget.client.name,
+                        _session.name, // ← depuis la session
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 15,
@@ -320,7 +332,7 @@ class _StatScreenState extends State<StatScreen>
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        '$_age ans · ${widget.client.height.toStringAsFixed(0)} cm · ${widget.client.goal}',
+                        '$_age ans · ${_session.height.toStringAsFixed(0)} cm · ${_session.goal}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -347,7 +359,7 @@ class _StatScreenState extends State<StatScreen>
           child: _miniStat(
             Icons.monitor_weight_outlined,
             'POIDS',
-            '${_current.toStringAsFixed(1)}',
+            _current.toStringAsFixed(1),
             'kg',
             kNeonGreen,
           ),
@@ -357,7 +369,7 @@ class _StatScreenState extends State<StatScreen>
           child: _miniStat(
             Icons.flag_outlined,
             'OBJECTIF',
-            '${_goal.toStringAsFixed(1)}',
+            _goal.toStringAsFixed(1),
             'kg',
             const Color(0xFF5BC4F5),
           ),
@@ -377,7 +389,7 @@ class _StatScreenState extends State<StatScreen>
           child: _miniStat(
             Icons.fitness_center_rounded,
             'SÉANCES',
-            '${widget.client.frequency}x',
+            '${_session.frequency}x',
             '/sem',
             const Color(0xFFFFA940),
           ),
@@ -445,13 +457,13 @@ class _StatScreenState extends State<StatScreen>
 
   // ─── PROGRESS CARD ────────────────────────────────────────────────────────
   Widget _progressCard() {
-    final isLoss = _goal < _start;
-    final goingRight = (isLoss && _change <= 0) || (!isLoss && _change >= 0);
-    final changeColor = goingRight ? kNeonGreen : const Color(0xFFFF6B6B);
+    final isLoss     = _goal < _start;
+    final goingRight =
+        (isLoss && _change <= 0) || (!isLoss && _change >= 0);
+    final changeColor =
+        goingRight ? kNeonGreen : const Color(0xFFFF6B6B);
 
-    if (_loadingHistory) {
-      return _loadingCard('Calcul de la progression…');
-    }
+    if (_loadingHistory) return _loadingCard('Calcul de la progression…');
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -465,11 +477,8 @@ class _StatScreenState extends State<StatScreen>
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.trending_up_rounded,
-                color: kNeonGreen,
-                size: 14,
-              ),
+              const Icon(Icons.trending_up_rounded,
+                  color: kNeonGreen, size: 14),
               const SizedBox(width: 6),
               Text(
                 'PROGRESSION',
@@ -518,8 +527,7 @@ class _StatScreenState extends State<StatScreen>
                       minHeight: 8,
                       backgroundColor: Colors.white.withOpacity(0.07),
                       valueColor: const AlwaysStoppedAnimation<Color>(
-                        kNeonGreen,
-                      ),
+                          kNeonGreen),
                     ),
                   ),
                 ],
@@ -530,31 +538,16 @@ class _StatScreenState extends State<StatScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _weightNode(
-                'DÉPART',
-                '${_start.toStringAsFixed(1)} kg',
-                Colors.white.withOpacity(0.4),
-              ),
-              Icon(
-                Icons.chevron_right,
-                color: Colors.white.withOpacity(0.2),
-                size: 18,
-              ),
-              _weightNode(
-                'ACTUEL',
-                '${_current.toStringAsFixed(1)} kg',
-                kNeonGreen,
-              ),
-              Icon(
-                Icons.chevron_right,
-                color: Colors.white.withOpacity(0.2),
-                size: 18,
-              ),
-              _weightNode(
-                'OBJECTIF',
-                '${_goal.toStringAsFixed(1)} kg',
-                const Color(0xFF5BC4F5),
-              ),
+              _weightNode('DÉPART', '${_start.toStringAsFixed(1)} kg',
+                  Colors.white.withOpacity(0.4)),
+              Icon(Icons.chevron_right,
+                  color: Colors.white.withOpacity(0.2), size: 18),
+              _weightNode('ACTUEL', '${_current.toStringAsFixed(1)} kg',
+                  kNeonGreen),
+              Icon(Icons.chevron_right,
+                  color: Colors.white.withOpacity(0.2), size: 18),
+              _weightNode('OBJECTIF', '${_goal.toStringAsFixed(1)} kg',
+                  const Color(0xFF5BC4F5)),
             ],
           ),
           const SizedBox(height: 18),
@@ -573,10 +566,9 @@ class _StatScreenState extends State<StatScreen>
                 ),
               ),
               Container(
-                width: 1,
-                height: 32,
-                color: Colors.white.withOpacity(0.08),
-              ),
+                  width: 1,
+                  height: 32,
+                  color: Colors.white.withOpacity(0.08)),
               Expanded(
                 child: _infoRow(
                   Icons.access_time_rounded,
@@ -593,29 +585,22 @@ class _StatScreenState extends State<StatScreen>
   }
 
   Widget _weightNode(String label, String value, Color color) => Column(
-    children: [
-      Text(
-        value,
-        style: TextStyle(
-          color: color,
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-      const SizedBox(height: 3),
-      Text(
-        label,
-        style: TextStyle(
-          color: Colors.white.withOpacity(0.28),
-          fontSize: 9,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.6,
-        ),
-      ),
-    ],
-  );
+        children: [
+          Text(value,
+              style: TextStyle(
+                  color: color, fontSize: 13, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 3),
+          Text(label,
+              style: TextStyle(
+                  color: Colors.white.withOpacity(0.28),
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6)),
+        ],
+      );
 
-  Widget _infoRow(IconData icon, Color iconColor, String label, String value) {
+  Widget _infoRow(
+      IconData icon, Color iconColor, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10),
       child: Row(
@@ -625,21 +610,14 @@ class _StatScreenState extends State<StatScreen>
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                label,
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.3),
-                  fontSize: 10,
-                ),
-              ),
-              Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+              Text(label,
+                  style: TextStyle(
+                      color: Colors.white.withOpacity(0.3), fontSize: 10)),
+              Text(value,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700)),
             ],
           ),
         ],
@@ -661,7 +639,8 @@ class _StatScreenState extends State<StatScreen>
         children: [
           Row(
             children: [
-              const Icon(Icons.show_chart_rounded, color: kNeonGreen, size: 14),
+              const Icon(Icons.show_chart_rounded,
+                  color: kNeonGreen, size: 14),
               const SizedBox(width: 6),
               Text(
                 'ÉVOLUTION DU POIDS',
@@ -673,48 +652,37 @@ class _StatScreenState extends State<StatScreen>
                 ),
               ),
               const Spacer(),
-              Text(
-                'par mois · kg',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.25),
-                  fontSize: 10,
-                ),
-              ),
+              Text('par mois · kg',
+                  style: TextStyle(
+                      color: Colors.white.withOpacity(0.25), fontSize: 10)),
             ],
           ),
           const SizedBox(height: 18),
-
-          // ── Contenu du graphique ──────────────────────────────────────────
           SizedBox(
             height: 180,
             child: _loadingHistory
                 ? const Center(
                     child: CircularProgressIndicator(
-                      color: kNeonGreen,
-                      strokeWidth: 2,
-                    ),
-                  )
+                        color: kNeonGreen, strokeWidth: 2))
                 : _historyError != null
-                ? _chartError()
-                : _history.length < 2
-                ? Center(
-                    child: Text(
-                      'Pas assez de données',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.2),
-                        fontSize: 13,
-                      ),
-                    ),
-                  )
-                : CustomPaint(
-                    painter: _ChartPainter(
-                      history: _history,
-                      goalWeight: _goal,
-                    ),
-                    child: const SizedBox.expand(),
-                  ),
+                    ? _chartError()
+                    : _history.length < 2
+                        ? Center(
+                            child: Text(
+                              'Pas assez de données',
+                              style: TextStyle(
+                                  color: Colors.white.withOpacity(0.2),
+                                  fontSize: 13),
+                            ),
+                          )
+                        : CustomPaint(
+                            painter: _ChartPainter(
+                              history: _history,
+                              goalWeight: _goal,
+                            ),
+                            child: const SizedBox.expand(),
+                          ),
           ),
-
           const SizedBox(height: 14),
           Row(
             children: [
@@ -733,22 +701,16 @@ class _StatScreenState extends State<StatScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.signal_wifi_off,
-            color: Colors.white.withOpacity(0.12),
-            size: 32,
-          ),
+          Icon(Icons.signal_wifi_off,
+              color: Colors.white.withOpacity(0.12), size: 32),
           const SizedBox(height: 8),
           GestureDetector(
             onTap: _fetchWeightHistory,
-            child: Text(
-              'Réessayer',
-              style: TextStyle(
-                color: kNeonGreen.withOpacity(0.6),
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            child: Text('Réessayer',
+                style: TextStyle(
+                    color: kNeonGreen.withOpacity(0.6),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -766,10 +728,9 @@ class _StatScreenState extends State<StatScreen>
               : Container(color: color),
         ),
         const SizedBox(width: 6),
-        Text(
-          label,
-          style: TextStyle(color: Colors.white.withOpacity(0.38), fontSize: 11),
-        ),
+        Text(label,
+            style: TextStyle(
+                color: Colors.white.withOpacity(0.38), fontSize: 11)),
       ],
     );
   }
@@ -793,11 +754,8 @@ class _StatScreenState extends State<StatScreen>
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: kNeonGreen.withOpacity(0.3)),
             ),
-            child: const Icon(
-              Icons.emoji_events_rounded,
-              color: kNeonGreen,
-              size: 20,
-            ),
+            child: const Icon(Icons.emoji_events_rounded,
+                color: kNeonGreen, size: 20),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -805,7 +763,7 @@ class _StatScreenState extends State<StatScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.client.goal,
+                  _session.goal, // ← depuis la session
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 14,
@@ -832,11 +790,8 @@ class _StatScreenState extends State<StatScreen>
             ),
             child: Row(
               children: [
-                const Icon(
-                  Icons.access_time_rounded,
-                  color: kNeonGreen,
-                  size: 12,
-                ),
+                const Icon(Icons.access_time_rounded,
+                    color: kNeonGreen, size: 12),
                 const SizedBox(width: 4),
                 Text(
                   _eta,
@@ -863,15 +818,12 @@ class _StatScreenState extends State<StatScreen>
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: color.withOpacity(0.22)),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 9,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.6,
-        ),
-      ),
+      child: Text(label,
+          style: TextStyle(
+              color: color,
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.6)),
     );
   }
 
@@ -891,18 +843,12 @@ class _StatScreenState extends State<StatScreen>
               width: 14,
               height: 14,
               child: CircularProgressIndicator(
-                color: kNeonGreen,
-                strokeWidth: 1.5,
-              ),
+                  color: kNeonGreen, strokeWidth: 1.5),
             ),
             const SizedBox(width: 10),
-            Text(
-              label,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.3),
-                fontSize: 12,
-              ),
-            ),
+            Text(label,
+                style: TextStyle(
+                    color: Colors.white.withOpacity(0.3), fontSize: 12)),
           ],
         ),
       ),
@@ -959,9 +905,9 @@ class _ChartPainter extends CustomPainter {
     final range = maxW - minW;
 
     Offset pt(int i, double val) => Offset(
-      pL + (i / (history.length - 1)) * cW,
-      pT + (1 - (val - minW) / range) * cH,
-    );
+          pL + (i / (history.length - 1)) * cW,
+          pT + (1 - (val - minW) / range) * cH,
+        );
 
     final gridP = Paint()
       ..color = Colors.white.withOpacity(0.07)
@@ -969,12 +915,8 @@ class _ChartPainter extends CustomPainter {
     for (int i = 0; i <= 4; i++) {
       final y = pT + (i / 4) * cH;
       canvas.drawLine(Offset(pL, y), Offset(size.width - pR, y), gridP);
-      _txt(
-        canvas,
-        (maxW - (i / 4) * range).toStringAsFixed(0),
-        Offset(0, y - 6),
-        Colors.white.withOpacity(0.28),
-      );
+      _txt(canvas, (maxW - (i / 4) * range).toStringAsFixed(0),
+          Offset(0, y - 6), Colors.white.withOpacity(0.28));
     }
 
     final goalY = pT + (1 - (goalWeight - minW) / range) * cH;
@@ -983,10 +925,9 @@ class _ChartPainter extends CustomPainter {
       ..strokeWidth = 1.2;
     for (double x = pL; x < size.width - pR; x += 10) {
       canvas.drawLine(
-        Offset(x, goalY),
-        Offset((x + 5).clamp(0.0, size.width - pR), goalY),
-        dashP,
-      );
+          Offset(x, goalY),
+          Offset((x + 5).clamp(0.0, size.width - pR), goalY),
+          dashP);
     }
 
     final fill = Path();
@@ -999,14 +940,13 @@ class _ChartPainter extends CustomPainter {
       ..lineTo(pL, pT + cH)
       ..close();
     canvas.drawPath(
-      fill,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0x3AC8FF00), Color(0x00C8FF00)],
-        ).createShader(Rect.fromLTWH(0, pT, size.width, cH)),
-    );
+        fill,
+        Paint()
+          ..shader = const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0x3AC8FF00), Color(0x00C8FF00)],
+          ).createShader(Rect.fromLTWH(0, pT, size.width, cH)));
 
     final line = Path();
     for (int i = 0; i < history.length; i++) {
@@ -1014,14 +954,13 @@ class _ChartPainter extends CustomPainter {
       i == 0 ? line.moveTo(o.dx, o.dy) : line.lineTo(o.dx, o.dy);
     }
     canvas.drawPath(
-      line,
-      Paint()
-        ..color = _lineColor
-        ..strokeWidth = 2
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round,
-    );
+        line,
+        Paint()
+          ..color = _lineColor
+          ..strokeWidth = 2
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round);
 
     for (int i = 0; i < history.length; i++) {
       final o = pt(i, history[i].weight);
@@ -1030,43 +969,27 @@ class _ChartPainter extends CustomPainter {
     }
 
     const abbr = [
-      'Jan',
-      'Fév',
-      'Mar',
-      'Avr',
-      'Mai',
-      'Jui',
-      'Jul',
-      'Aoû',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Déc',
+      'Jan','Fév','Mar','Avr','Mai','Jui',
+      'Jul','Aoû','Sep','Oct','Nov','Déc'
     ];
-    final step = ((history.length - 1) / 3).ceil().clamp(1, history.length);
+    final step =
+        ((history.length - 1) / 3).ceil().clamp(1, history.length);
     for (int i = 0; i < history.length; i += step) {
       final o = pt(i, history[i].weight);
-      _txt(
-        canvas,
-        abbr[history[i].date.month - 1],
-        Offset(o.dx - 10, pT + cH + 6),
-        Colors.white.withOpacity(0.28),
-      );
+      _txt(canvas, abbr[history[i].date.month - 1],
+          Offset(o.dx - 10, pT + cH + 6), Colors.white.withOpacity(0.28));
     }
   }
 
   void _txt(Canvas c, String text, Offset offset, Color color) {
     (TextPainter(
       text: TextSpan(
-        text: text,
-        style: TextStyle(
-          color: color,
-          fontSize: 9,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
+          text: text,
+          style: TextStyle(
+              color: color, fontSize: 9, fontWeight: FontWeight.w500)),
       textDirection: TextDirection.ltr,
-    )..layout()).paint(c, offset);
+    )..layout())
+        .paint(c, offset);
   }
 
   @override

@@ -1,12 +1,16 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/models/client.dart';
 import 'package:test_hh/models/coach.dart';
 import 'package:test_hh/screens/login.dart';
 import 'package:test_hh/screens/profileClient.dart';
 import 'package:test_hh/services/api_service.dart';
+import 'package:test_hh/session/user_session.dart';
 
 class ProfileCoach extends StatefulWidget {
   const ProfileCoach({super.key});
@@ -20,7 +24,8 @@ class _ProfileCoachState extends State<ProfileCoach> {
   bool _isLoading = true;
   String? _error;
   bool _isEditing = false;
-  File? _profileImage;
+  XFile? _profileImage;
+  String? _imageUrl;
 
   late TextEditingController _nameController;
   late TextEditingController _specialtyController;
@@ -60,21 +65,79 @@ class _ProfileCoachState extends State<ProfileCoach> {
     super.dispose();
   }
 
+  // --- Cloudinary Upload ---
+  Future<String?> _uploadImageToCloudinary(XFile imageFile) async {
+    try {
+      final uri = Uri.parse("https://api.cloudinary.com/v1_1/dlqcknocf/image/upload");
+      final request = http.MultipartRequest("POST", uri);
+      request.fields['upload_preset'] = 'GymApp'; // Remplacez par votre preset Cloudinary
+
+      if (kIsWeb) {
+        final bytes = await imageFile.readAsBytes();
+        request.files.add(
+          http.MultipartFile.fromBytes('file', bytes, filename: imageFile.name),
+        );
+      } else {
+        request.files.add(
+          await http.MultipartFile.fromPath('file', imageFile.path),
+        );
+      }
+
+      final response = await request.send();
+      final res = await response.stream.bytesToString();
+      final data = jsonDecode(res);
+
+      if (response.statusCode == 200) {
+        return data['secure_url'] as String?;
+      } else {
+        debugPrint("Cloudinary error: $res");
+        return null;
+      }
+    } catch (e) {
+      debugPrint("Cloudinary exception: $e");
+      return null;
+    }
+  }
+
+  // --- Load Coach Profile ---
   Future<void> _loadCoach() async {
     setState(() { _isLoading = true; _error = null; });
+
+    if (!UserSession.instance.isLoaded) {
+      final success = await UserSession.instance.load();
+      if (!success) {
+        setState(() {
+          _error = "Session expirée. Veuillez vous reconnecter.";
+          _isLoading = false;
+        });
+        return;
+      }
+    }
 
     final res = await ApiService.getMyCoachProfile();
     if (!mounted) return;
 
     if (res['success'] == true && res['coach'] != null) {
-      final coach = Coach.fromJson(res['coach'] as Map<String, dynamic>);
-      setState(() {
-        _coach = coach;
-        _nameController.text = coach.name;
-        _specialtyController.text = coach.specialty ?? '';
-        _bioController.text = coach.bio ?? '';
-        _isLoading = false;
-      });
+      try {
+        final coachJson = res['coach'] as Map<String, dynamic>;
+        if (coachJson['clients'] == null) {
+          coachJson['clients'] = [];
+        }
+        final coach = Coach.fromJson(coachJson);
+        setState(() {
+          _coach = coach;
+          _imageUrl = coach.image.isNotEmpty ? coach.image : null;
+          _nameController.text = coach.name;
+          _specialtyController.text = coach.specialty ?? '';
+          _bioController.text = coach.bio ?? '';
+          _isLoading = false;
+        });
+      } catch (e) {
+        setState(() {
+          _error = "Erreur lors du chargement du profil: ${e.toString()}";
+          _isLoading = false;
+        });
+      }
     } else {
       setState(() {
         _error = res['message'] ?? 'Erreur de chargement.';
@@ -83,13 +146,32 @@ class _ProfileCoachState extends State<ProfileCoach> {
     }
   }
 
+  // --- Save Coach Profile ---
   Future<void> _saveCoach() async {
     if (_coach == null) return;
+
+    String? imageUrl = _imageUrl;
+    if (_profileImage != null) {
+      imageUrl = await _uploadImageToCloudinary(_profileImage!);
+      if (imageUrl == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.redAccent.withOpacity(0.9),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            content: const Text('Échec du téléchargement de l\'image. Veuillez réessayer.'),
+          ),
+        );
+        return;
+      }
+    }
 
     final res = await ApiService.updateCoach(_coach!.id, {
       'name': _nameController.text.trim(),
       'specialty': _specialtyController.text.trim(),
       'bio': _bioController.text.trim(),
+      'image': imageUrl,
     });
 
     if (!mounted) return;
@@ -98,6 +180,8 @@ class _ProfileCoachState extends State<ProfileCoach> {
       final updated = Coach.fromJson(res['coach'] as Map<String, dynamic>);
       setState(() {
         _coach = updated.copyWith(clients: _coach!.clients);
+        _imageUrl = updated.image;
+        _profileImage = null; // Réinitialiser après sauvegarde
       });
     }
 
@@ -114,12 +198,18 @@ class _ProfileCoachState extends State<ProfileCoach> {
     );
   }
 
-  String _formattedDate(DateTime d) => '${d.day.toString().padLeft(2, '0')} / ${d.month.toString().padLeft(2, '0')} / ${d.year}';
+  // --- Helper Methods ---
+  String _formattedDate(DateTime? d) {
+    if (d == null) return '—';
+    return '${d.day.toString().padLeft(2, '0')} / ${d.month.toString().padLeft(2, '0')} / ${d.year}';
+  }
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
-    if (picked != null) setState(() => _profileImage = File(picked.path));
+    if (picked != null) {
+      setState(() => _profileImage = picked);
+    }
   }
 
   void _toggleEdit() async {
@@ -127,7 +217,7 @@ class _ProfileCoachState extends State<ProfileCoach> {
       await _saveCoach();
     }
     setState(() => _isEditing = !_isEditing);
-  } 
+  }
 
   void _openClientProfile(Client client) {
     Navigator.push(
@@ -138,13 +228,15 @@ class _ProfileCoachState extends State<ProfileCoach> {
 
   Future<void> _logout() async {
     await ApiService.logout();
+    UserSession.instance.clear();
     Navigator.pushAndRemoveUntil(
-    context,
-    MaterialPageRoute(builder: (_) => LoginScreen()),
-    (route) => false,
-  );
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
+    );
   }
 
+  // --- UI Builders ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -218,7 +310,7 @@ class _ProfileCoachState extends State<ProfileCoach> {
             _buildClientList(),
           ),
           const SizedBox(height: 20),
-          _buildLogoutButton(), // Bouton de déconnexion ajouté ici
+          _buildLogoutButton(),
         ],
       ),
     );
@@ -352,11 +444,15 @@ class _ProfileCoachState extends State<ProfileCoach> {
                     boxShadow: [BoxShadow(color: kNeonGreen.withOpacity(0.15), blurRadius: 20)],
                   ),
                   child: _profileImage != null
-                      ? ClipOval(child: Image.file(_profileImage!, fit: BoxFit.cover))
-                      : coach.image.isNotEmpty
+                      ? ClipOval(
+                          child: kIsWeb
+                              ? Image.network(_profileImage!.path, fit: BoxFit.cover)
+                              : Image.file(File(_profileImage!.path), fit: BoxFit.cover),
+                        )
+                      : (_imageUrl != null && _imageUrl!.isNotEmpty
                           ? ClipOval(
                               child: Image.network(
-                                coach.image,
+                                _imageUrl!,
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, __, ___) => const Icon(
                                   Icons.sports_gymnastics_rounded,
@@ -365,7 +461,7 @@ class _ProfileCoachState extends State<ProfileCoach> {
                                 ),
                               ),
                             )
-                          : const Icon(Icons.sports_gymnastics_rounded, color: kNeonGreen, size: 34),
+                          : const Icon(Icons.sports_gymnastics_rounded, color: kNeonGreen, size: 34)),
                 ),
                 if (_isEditing)
                   Positioned(

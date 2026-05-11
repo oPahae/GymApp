@@ -4,16 +4,19 @@ import 'package:http/http.dart' as http;
 import 'package:test_hh/components/header.dart';
 import 'package:test_hh/components/navbar.dart';
 import 'package:test_hh/constants/colors.dart';
-import 'package:test_hh/screens/exercices.dart'; // ton ExercicesScreen
+import 'package:test_hh/screens/exercices.dart';
+import 'package:test_hh/services/api_service.dart';
+import 'package:test_hh/session/user_session.dart'; // ← ajout
 
 const String _kBase = 'http://192.168.0.232:5000/api';
+
 // ─── Model ────────────────────────────────────────────────────────────────────
 
 class BodyPartModel {
   final String id;
   final String name;
   final String imageUrl;
-  final int exerciceCount; // on stocke juste le count pour l'affichage
+  final int exerciceCount;
 
   const BodyPartModel({
     required this.id,
@@ -23,9 +26,9 @@ class BodyPartModel {
   });
 
   factory BodyPartModel.fromJson(Map<String, dynamic> j) => BodyPartModel(
-        id:            j['id'].toString(),
-        name:          j['name']     ?? '',
-        imageUrl:      j['imageUrl'] ?? '',
+        id: j['id'].toString(),
+        name: j['name'] ?? '',
+        imageUrl: j['imageUrl'] ?? '',
         exerciceCount: (j['exercises'] as List? ?? []).length,
       );
 }
@@ -43,6 +46,11 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  // ── Session — lue directement depuis UserSession ──────────────────────────
+  // Plus de _userName / _userRole comme champs séparés ni de Future de session.
+  String get _userName => UserSession.instance.name;
+  String get _userRole => UserSession.instance.role;
+
   // ── State API ─────────────────────────────────────────────────────────────
   List<BodyPartModel> _bodyParts = [];
   bool _loading = true;
@@ -52,8 +60,10 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
   void initState() {
     super.initState();
     _searchController.addListener(
-      () => setState(() => _searchQuery = _searchController.text.toLowerCase()),
+      () =>
+          setState(() => _searchQuery = _searchController.text.toLowerCase()),
     );
+    // La session est déjà chargée — on fetch directement les données.
     _fetchBodyParts();
   }
 
@@ -66,10 +76,21 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
   // ── API ───────────────────────────────────────────────────────────────────
 
   Future<void> _fetchBodyParts() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
+      final token = await ApiService.getToken();
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      };
+
       final uri = Uri.parse('$_kBase/exercice/bodyparts');
-      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+      final response = await http
+          .get(uri, headers: headers)
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode != 200) {
         throw Exception('Erreur ${response.statusCode}');
@@ -84,11 +105,11 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
 
       setState(() {
         _bodyParts = list;
-        _loading   = false;
+        _loading = false;
       });
     } catch (e) {
       setState(() {
-        _error   = e.toString();
+        _error = e.toString();
         _loading = false;
       });
     }
@@ -124,7 +145,8 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
   Widget _buildBody() {
     if (_loading) {
       return const Center(
-        child: CircularProgressIndicator(color: kNeonGreen, strokeWidth: 2),
+        child:
+            CircularProgressIndicator(color: kNeonGreen, strokeWidth: 2),
       );
     }
 
@@ -154,7 +176,8 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
         ? _buildEmpty()
         : GridView.builder(
             padding: const EdgeInsets.fromLTRB(18, 0, 18, 100),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            gridDelegate:
+                const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
@@ -168,14 +191,22 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
   // ─── TOP BAR ──────────────────────────────────────────────────────────────
 
   Widget _buildTopBar() {
+    // Nom affiché selon le rôle, lu depuis UserSession
+    final displayName = UserSession.instance.isLoaded
+        ? (_userRole == 'coach' ? 'Coach · $_userName' : _userName)
+        : null;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
       child: Row(
         children: [
           GestureDetector(
-            onTap: () { if (Navigator.canPop(context)) Navigator.pop(context); },
+            onTap: () {
+              if (Navigator.canPop(context)) Navigator.pop(context);
+            },
             child: Container(
-              width: 38, height: 38,
+              width: 38,
+              height: 38,
               decoration: BoxDecoration(
                 color: kDarkCard,
                 borderRadius: BorderRadius.circular(12),
@@ -186,16 +217,31 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
             ),
           ),
           const SizedBox(width: 14),
-          const Expanded(
-            child: Text('BODY PARTS',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 2)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('BODY PARTS',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 2)),
+                // Nom du user connecté lu depuis UserSession
+                if (displayName != null && displayName.isNotEmpty)
+                  Text(
+                    displayName,
+                    style: TextStyle(
+                        color: kNeonGreen.withOpacity(0.7),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600),
+                  ),
+              ],
+            ),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: kNeonGreen.withOpacity(0.12),
               borderRadius: BorderRadius.circular(20),
@@ -258,7 +304,7 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
         context,
         MaterialPageRoute(
           builder: (_) => ExercicesScreen(
-            bodyPartID:   part.id,
+            bodyPartID: part.id,
             bodyPartName: part.name,
           ),
         ),
@@ -287,7 +333,10 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Colors.black.withOpacity(0.88)],
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withOpacity(0.88)
+                  ],
                   stops: const [0.35, 1.0],
                 ),
               ),
@@ -324,7 +373,9 @@ class _BodyPartsScreenState extends State<BodyPartsScreen> {
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 1.2,
-                        shadows: [Shadow(color: Colors.black87, blurRadius: 8)]),
+                        shadows: [
+                          Shadow(color: Colors.black87, blurRadius: 8)
+                        ]),
                   ),
                   const SizedBox(height: 6),
                   Row(
