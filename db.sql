@@ -226,4 +226,3 @@ CREATE TABLE WeightHistory (
     FOREIGN KEY (clientID) REFERENCES Clients(id),
     UNIQUE KEY unique_day (clientID, logDate)
 );
-

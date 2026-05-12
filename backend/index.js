@@ -12,6 +12,7 @@ import statRoute from './routes/anas/stat.js';
 import homeRoutes from './routes/pahae/home.js';
 import addFoodRoutes from './routes/pahae/addFood.js';
 import addRecipeRoutes from './routes/pahae/addRecipe.js';
+import clientsRoutes from './routes/pahae/clients.js';
 
 import authRoutes from './routes/jihane/auth.js'; 
 import clientRoutes from './routes/jihane/client.js';
@@ -28,15 +29,16 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Routes Pahae
+app.use('/api/pahae/home/', homeRoutes);
+app.use('/api/pahae/addFood/', addFoodRoutes);
+app.use('/api/pahae/addRecipe/', addRecipeRoutes);
+app.use('/api/pahae/clients/', clientsRoutes);
+
 // Routes Anas
 app.use("/api/client", clientRoute);
 app.use("/api/exercice", exerciceRoute);
 app.use("/api/stat", statRoute);
-
-// Routes Zaynab
-app.use('/api/pahae/home/', homeRoutes);
-app.use('/api/pahae/addFood/', addFoodRoutes);
-app.use('/api/pahae/addRecipe/', addRecipeRoutes);
 
 // Routes Jihane
 app.use('/api/jihane/auth', authRoutes); 

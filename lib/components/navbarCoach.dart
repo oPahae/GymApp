@@ -1,46 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:test_hh/constants/colors.dart';
-import 'package:test_hh/models/client.dart';
-import 'package:test_hh/screens/home.dart';
-import 'package:test_hh/screens/foods.dart';
-import 'package:test_hh/screens/bodyParts.dart';
-import 'package:test_hh/screens/stats.dart';
+import 'package:test_hh/screens/clients.dart';
+import 'package:test_hh/screens/invites.dart';
 
-class NavBar extends StatefulWidget {
-  NavBar({ super.key, required this.selectedIndex });
+class NavBarCoach extends StatefulWidget {
+  NavBarCoach({ super.key, required this.selectedIndex });
 
   int selectedIndex;
 
   @override
-  State<NavBar> createState() => _NavBarState();
+  State<NavBarCoach> createState() => _NavBarCoachState();
 }
 
 // test
 
-class _NavBarState extends State<NavBar> {
+class _NavBarCoachState extends State<NavBarCoach> {
 
   @override
   Widget build(BuildContext context) {
+    print("slm hh");
     final items = [
       _NavItem(
-        icon: Icons.home,
-        label: 'Home',
-        href: HomeScreen()
+        icon: Icons.people,
+        label: 'Clients',
+        href: ClientsScreen()
       ),
       _NavItem(
-        icon: Icons.restaurant_menu,
-        label: 'Foods',
-        href: FoodsScreen(),
-      ),
-      _NavItem(
-        icon: Icons.fitness_center,
-        label: 'Exercises',
-        href: BodyPartsScreen(),
-      ),
-      _NavItem(
-        icon: Icons.bar_chart,
-        label: 'Stats',
-        href: StatScreen(),
+        icon: Icons.person_add,
+        label: 'Invites',
+        href: InvitesPage(),
       ),
     ];
 

@@ -74,7 +74,8 @@ class Client {
       'frequency': frequency,
       'goal': goal,
       'weightGoal': weightGoal,
-      if (createdAt != null) 'createdAt': createdAt!.toIso8601String(), // Optionnel
+      if (createdAt != null)
+        'createdAt': createdAt!.toIso8601String(), // Optionnel
       'coachID': coachID,
       'gender': gender,
       if (coach != null) 'coach': coach!.toJson(), // Optionnel
@@ -116,4 +117,19 @@ class Client {
       coach: coach ?? this.coach,
     );
   }
+
+  int calculateAge() {
+    final now = DateTime.now();
+    int age = now.year - this.birth.year;
+    if (now.month < this.birth.month ||
+        (now.month == this.birth.month && now.day < this.birth.day)) {
+      age--;
+    }
+    return age;
+  }
+}
+
+extension ClientExtensions on Client {
+  int get age => calculateAge();
+  double get bmi => height > 0 ? weight / ((height / 100) * (height / 100)) : 0;
 }

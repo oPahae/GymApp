@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:test_hh/components/navbarCoach.dart';
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/components/header.dart';
 import 'package:test_hh/components/navbar.dart';
@@ -68,7 +69,7 @@ class _InvitesPageState extends State<InvitesPage> {
   final Set<int> _processing = {};
 
   /// ID du coach connecté, lu depuis la session
-  int get _coachID => _session.id;
+  int get _coachID => _session.id == 0 ? 3 : _session.id; // hna 7it kiya5od 0 dima, so drt ila kan 0 ydir at least 3 7it hoa li kin f pdd
 
   @override
   void initState() {
@@ -325,6 +326,7 @@ class _InvitesPageState extends State<InvitesPage> {
                 color: Colors.white.withOpacity(0.5), fontSize: 14),
           ),
         ),
+        bottomNavigationBar: NavBarCoach(selectedIndex: 1),
       );
     }
 
