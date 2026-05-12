@@ -1,4 +1,5 @@
 import 'package:test_hh/services/api_service.dart';
+import 'package:flutter/foundation.dart';
 
 /// Singleton léger qui cache le profil du user connecté.
 /// À appeler une seule fois après login, puis accessible partout.
@@ -33,18 +34,25 @@ class UserSession {
   /// Charge (ou recharge) le profil depuis l'API.
   /// Retourne true si succès.
   Future<bool> load() async {
-    final result = await ApiService.getMe();
-    if (result['success'] == true) {
-      // L'API retourne les données soit dans result['user'] soit directement
-      _raw = (result['user'] ?? result['data'] ?? result) as Map<String, dynamic>;
-      // S'assurer que 'id' est bien un int
-      if (_raw!['id'] is String) {
-        _raw!['id'] = int.tryParse(_raw!['id'] as String) ?? 0;
-      }
-      return true;
-    }
-    return false;
+  final result = await ApiService.getMe();
+
+  if (result['success'] == true) {
+    final raw = result['coach'] ?? result['client'] ?? result['user'] ?? result;
+    _raw = Map<String, dynamic>.from(raw as Map);
+    _raw!['role'] = result['role'] ?? 'coach';
+
+    // 👇 Ajoutez ce print
+    print('=== RAW BEFORE PARSE: ${_raw}');
+    print('=== id field: ${_raw!['id']} (type: ${_raw!['id'].runtimeType})');
+
+    final rawId = _raw!['id'];
+    if (rawId is String) _raw!['id'] = int.tryParse(rawId) ?? 0;
+
+    print('id: $id, role: $role, name: $name');
+    return id > 0;
   }
+  return false;
+}
 
   /// Efface la session (logout).
   void clear() => _raw = null;

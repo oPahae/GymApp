@@ -4,14 +4,12 @@ import 'package:http/http.dart' as http;
 import 'package:test_hh/components/navbarCoach.dart';
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/components/header.dart';
-import 'package:test_hh/components/navbar.dart';
 import 'package:test_hh/constants/urls.dart';
-import 'package:test_hh/session/user_session.dart'; // ← UserSession
+import 'package:test_hh/session/user_session.dart';
 import '../models/client.dart';
 
 // ─── Service ───────────────────────────────────────────────────────────────
 class InviteService {
-  /// Récupère les invitations en attente pour un coach
   static Future<List<Client>> fetchInvites(int coachID) async {
     final response =
         await http.get(Uri.parse('$kBaseUrl/api/invite/coach/$coachID'));
@@ -23,7 +21,6 @@ class InviteService {
         'Impossible de charger les invitations (${response.statusCode})');
   }
 
-  /// Accepter un client
   static Future<void> acceptInvite(
       {required int coachID, required int clientID}) async {
     final response = await http.post(
@@ -36,7 +33,6 @@ class InviteService {
     }
   }
 
-  /// Refuser un client
   static Future<void> refuseInvite(
       {required int coachID, required int clientID}) async {
     final response = await http.post(
@@ -52,8 +48,6 @@ class InviteService {
 
 // ─── Page ──────────────────────────────────────────────────────────────────
 class InvitesPage extends StatefulWidget {
-  /// Plus besoin de passer currentCoachID en paramètre :
-  /// on le lit directement depuis UserSession.
   const InvitesPage({super.key});
 
   @override
@@ -61,23 +55,31 @@ class InvitesPage extends StatefulWidget {
 }
 
 class _InvitesPageState extends State<InvitesPage> {
-  // ── Session ──────────────────────────────────────────────────────────────
   final _session = UserSession.instance;
 
   late Future<List<Client>> _invitesFuture;
   List<Client>? _invites;
   final Set<int> _processing = {};
 
-  /// ID du coach connecté, lu depuis la session
-  int get _coachID => _session.id == 0 ? 3 : _session.id; // hna 7it kiya5od 0 dima, so drt ila kan 0 ydir at least 3 7it hoa li kin f pdd
+  // ✅ Plus de fallback hardcodé
+  int get _coachID => _session.id;
 
   @override
   void initState() {
     super.initState();
+    _ensureSessionThenLoad();
+  }
+
+  // ✅ Charge la session si nécessaire avant de fetch les invites
+  Future<void> _ensureSessionThenLoad() async {
+    if (!_session.isLoaded || _session.id == 0) {
+      await _session.load();
+    }
     _loadInvites();
   }
 
   void _loadInvites() {
+    print('=== fetchInvites for coachID: $_coachID ===');
     _invitesFuture = InviteService.fetchInvites(_coachID)
       ..then((list) {
         if (mounted) setState(() => _invites = list);
@@ -150,7 +152,6 @@ class _InvitesPageState extends State<InvitesPage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Handle
                 Center(
                   child: Container(
                     width: 40,
@@ -204,7 +205,6 @@ class _InvitesPageState extends State<InvitesPage> {
                 const SizedBox(height: 20),
                 Row(
                   children: [
-                    // Annuler
                     Expanded(
                       child: GestureDetector(
                         onTap: () => Navigator.pop(ctx),
@@ -225,7 +225,6 @@ class _InvitesPageState extends State<InvitesPage> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    // Confirmer refus
                     Expanded(
                       child: GestureDetector(
                         onTap: () async {
@@ -311,9 +310,6 @@ class _InvitesPageState extends State<InvitesPage> {
   // ── Build ────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    // Garde-fou : si la session n'est pas chargée (ne devrait pas arriver
-    // après un login correct), on affiche un message d'erreur plutôt que
-    // de crasher.
     if (!_session.isLoaded || !_session.isCoach) {
       return Scaffold(
         backgroundColor: kDarkBg,
@@ -353,7 +349,6 @@ class _InvitesPageState extends State<InvitesPage> {
                   ),
                 ),
                 const SizedBox(width: 10),
-                // Badge compteur
                 if (invites != null)
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 300),
@@ -375,7 +370,6 @@ class _InvitesPageState extends State<InvitesPage> {
                     ),
                   ),
                 const Spacer(),
-                // Nom du coach connecté (info contextuelle)
                 Text(
                   _session.name,
                   style: TextStyle(
@@ -385,9 +379,8 @@ class _InvitesPageState extends State<InvitesPage> {
                   ),
                 ),
                 const SizedBox(width: 10),
-                // Bouton refresh
                 GestureDetector(
-                  onTap: _loadInvites,
+                  onTap: () => setState(_loadInvites),
                   child: Icon(Icons.refresh_rounded,
                       color: Colors.white.withOpacity(0.4), size: 20),
                 ),
@@ -465,6 +458,7 @@ class _InvitesPageState extends State<InvitesPage> {
           ),
         ],
       ),
+      bottomNavigationBar: NavBarCoach(selectedIndex: 1),
     );
   }
 
