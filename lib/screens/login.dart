@@ -1,6 +1,7 @@
 // lib/screens/login.dart
 import 'package:flutter/material.dart';
 import 'package:test_hh/constants/colors.dart';
+import 'package:test_hh/screens/clients.dart';
 import 'package:test_hh/screens/register.dart';
 import 'package:test_hh/screens/home.dart';
 import 'package:test_hh/screens/forgotPassword.dart';
@@ -52,7 +53,7 @@ class _LoginScreenState extends State<LoginScreen> {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => const HomeScreen(), // adapter selon le rôle si besoin
+        builder: (_) => role == "client" ? HomeScreen() : ClientsScreen(),
       ),
     );
   } else {

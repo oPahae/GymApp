@@ -3,13 +3,14 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:test_hh/constants/colors.dart';
-import 'package:test_hh/components/navbar.dart';
 import 'package:test_hh/components/header.dart';
+import 'package:test_hh/models/client.dart';
+import 'package:test_hh/models/coach.dart';
 import 'package:test_hh/services/api_service.dart';
-import 'package:test_hh/session/user_session.dart'; // ← ajout
+import 'package:test_hh/session/user_session.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MODÈLES
+// MODÈLES (utilisation des modèles externes)
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum FoodType { solid, liquid, grains, unit }
@@ -56,116 +57,11 @@ class FoodModel {
   }
 }
 
-class Client {
-  final int id;
-  final String name;
-  final String image;
-  final DateTime birth;
-  final double weight;
-  final double height;
-  final int frequency;
-  final String goal;
-  final double weightGoal;
-  final DateTime createdAt;
-  final int? coachId;
-  final String? gender;
-
-  // Données du coach (si assigné)
-  final String? coachName;
-  final String? coachImage;
-  final String? coachSpecialty;
-  final String? coachBio;
-
-  const Client({
-    required this.id,
-    required this.name,
-    required this.image,
-    required this.birth,
-    required this.weight,
-    required this.height,
-    required this.frequency,
-    required this.goal,
-    required this.weightGoal,
-    required this.createdAt,
-    this.coachId,
-    this.gender,
-    this.coachName,
-    this.coachImage,
-    this.coachSpecialty,
-    this.coachBio,
-  });
-
-  /// Construit un Client depuis la réponse de /api/jihane/auth/me (role=client)
-  factory Client.fromMeJson(Map<String, dynamic> user) {
-    final coach = user['coach'] as Map<String, dynamic>?;
-    return Client(
-      id: user['id'] as int,
-      name: user['name'] as String? ?? '',
-      image: user['image'] as String? ?? '',
-      birth: DateTime.tryParse(user['birth'] as String? ?? '') ??
-          DateTime(2000),
-      weight: (user['weight'] as num?)?.toDouble() ?? 0.0,
-      height: (user['height'] as num?)?.toDouble() ?? 0.0,
-      frequency: (user['frequency'] as num?)?.toInt() ?? 0,
-      goal: user['goal'] as String? ?? '',
-      weightGoal: (user['weightGoal'] as num?)?.toDouble() ?? 0.0,
-      createdAt:
-          DateTime.tryParse(user['createdAt'] as String? ?? '') ??
-              DateTime.now(),
-      coachId: user['coachID'] as int?,
-      gender: user['gender'] as String?,
-      coachName: coach?['name'] as String?,
-      coachImage: coach?['image'] as String?,
-      coachSpecialty: coach?['specialty'] as String?,
-      coachBio: coach?['bio'] as String?,
-    );
-  }
-
-  /// Construit un Client directement depuis UserSession (pas de requête réseau).
-  factory Client.fromUserSession(UserSession session) {
-    // Les données du coach sont dans session['coach'] si disponibles
-    final coach = session['coach'] as Map<String, dynamic>?;
-    return Client(
-      id: session.id,
-      name: session.name,
-      image: session.image,
-      birth: DateTime.tryParse(session.birth) ?? DateTime(2000),
-      weight: session.weight,
-      height: session.height,
-      frequency: session.frequency,
-      goal: session.goal,
-      weightGoal: session.weightGoal,
-      createdAt: DateTime.now(), // createdAt non exposé dans UserSession
-      coachId: session.coachID,
-      gender: session.gender.isNotEmpty ? session.gender : null,
-      coachName: coach?['name'] as String?,
-      coachImage: coach?['image'] as String?,
-      coachSpecialty: coach?['specialty'] as String?,
-      coachBio: coach?['bio'] as String?,
-    );
-  }
-
-  int get age {
-    final now = DateTime.now();
-    int a = now.year - birth.year;
-    if (now.month < birth.month ||
-        (now.month == birth.month && now.day < birth.day)) {
-      a--;
-    }
-    return a;
-  }
-
-  double get bmi =>
-      height > 0 ? weight / ((height / 100) * (height / 100)) : 0;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ClientScreen extends StatefulWidget {
-  /// Si [client] est fourni (ex: coach qui consulte un profil),
-  /// on l'affiche directement. Sinon on lit depuis UserSession.
   final Client? client;
 
   const ClientScreen({super.key, this.client});
@@ -175,19 +71,13 @@ class ClientScreen extends StatefulWidget {
 }
 
 class _ClientScreenState extends State<ClientScreen> {
-  // ── Session / data ─────────────────────────────────────────────────────────
   Client? _client;
   bool _loading = true;
   String? _error;
 
-  // ── Foods ─────────────────────────────────────────────────────────────────
   List<FoodModel> _chosenFoods = [];
   bool _loadingFoods = false;
-
-  // ── Weight history ────────────────────────────────────────────────────────
   List<_WeightEntry> _weightHistory = [];
-
-  // ── Program editor ────────────────────────────────────────────────────────
   final TextEditingController _programController = TextEditingController();
   bool _programEditing = false;
 
@@ -195,12 +85,10 @@ class _ClientScreenState extends State<ClientScreen> {
   void initState() {
     super.initState();
     if (widget.client != null) {
-      // Client passé en paramètre (ex: coach consulte un profil)
       _client = widget.client;
       _loading = false;
       _loadClientData();
     } else {
-      // Lire depuis UserSession (synchrone — pas de Future)
       _loadFromSession();
     }
   }
@@ -210,8 +98,6 @@ class _ClientScreenState extends State<ClientScreen> {
     _programController.dispose();
     super.dispose();
   }
-
-  // ── Charger depuis UserSession (synchrone) ─────────────────────────────────
 
   void _loadFromSession() {
     final session = UserSession.instance;
@@ -232,16 +118,31 @@ class _ClientScreenState extends State<ClientScreen> {
       return;
     }
 
-    // Construction du Client depuis le cache de session — aucun appel réseau
     setState(() {
-      _client = Client.fromUserSession(session);
+      _client = Client(
+        id: session.id,
+        name: session.name,
+        email: session.email,
+        image: session.image,
+        birth: DateTime.tryParse(session.birth) ?? DateTime(2000),
+        weight: session.weight,
+        height: session.height,
+        frequency: session.frequency,
+        goal: session.goal,
+        weightGoal: session.weightGoal,
+        createdAt: DateTime.now(),
+        coachID: session.coachID,
+        gender: session.gender.isNotEmpty ? session.gender : 'Male',
+        coach: session['coach'] != null
+            ? Coach.fromJson(session['coach'] as Map<String, dynamic>)
+            : null,
+      );
       _loading = false;
     });
 
     _loadClientData();
   }
 
-  /// Charge les données supplémentaires du client (foods, weight history…)
   Future<void> _loadClientData() async {
     if (_client == null) return;
     await Future.wait([
@@ -249,8 +150,6 @@ class _ClientScreenState extends State<ClientScreen> {
       _fetchWeightHistory(),
     ]);
   }
-
-  // ── Aliments du client ─────────────────────────────────────────────────────
 
   Future<void> _fetchChosenFoods() async {
     if (_client == null) return;
@@ -282,8 +181,6 @@ class _ClientScreenState extends State<ClientScreen> {
     }
   }
 
-  // ── Historique de poids ────────────────────────────────────────────────────
-
   Future<void> _fetchWeightHistory() async {
     if (_client == null) return;
     try {
@@ -312,7 +209,6 @@ class _ClientScreenState extends State<ClientScreen> {
       }
     } catch (_) {}
 
-    // Fallback mock si l'endpoint n'existe pas encore
     if (_weightHistory.isEmpty && _client != null) {
       setState(() {
         _weightHistory = [
@@ -327,8 +223,6 @@ class _ClientScreenState extends State<ClientScreen> {
       });
     }
   }
-
-  // ── Helper parsing food depuis JSON ───────────────────────────────────────
 
   FoodModel _foodFromJson(Map<String, dynamic> j) {
     FoodType type;
@@ -354,25 +248,18 @@ class _ClientScreenState extends State<ClientScreen> {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // BUILD
-  // ─────────────────────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
-    // ── Loading (rare : uniquement si widget.client != null et fetch en cours) ──
     if (_loading) {
       return Scaffold(
         backgroundColor: Colors.black,
         appBar: const Header(),
         body: const Center(
-          child:
-              CircularProgressIndicator(color: kNeonGreen, strokeWidth: 2),
+          child: CircularProgressIndicator(color: kNeonGreen, strokeWidth: 2),
         ),
       );
     }
 
-    // ── Erreur session ──
     if (_error != null) {
       return Scaffold(
         backgroundColor: Colors.black,
@@ -392,20 +279,18 @@ class _ClientScreenState extends State<ClientScreen> {
                         color: Colors.white.withOpacity(0.5), fontSize: 14)),
                 const SizedBox(height: 20),
                 GestureDetector(
-                  // Si session invalide, on tente de recharger depuis session
                   onTap: () {
-                          setState(() {
-                            _loading = true;
-                            _error = null;
-                          });
-                          _loadFromSession();
-                        },
+                    setState(() {
+                      _loading = true;
+                      _error = null;
+                    });
+                    _loadFromSession();
+                  },
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 20, vertical: 10),
                     decoration: BoxDecoration(
-                      border:
-                          Border.all(color: kNeonGreen.withOpacity(0.5)),
+                      border: Border.all(color: kNeonGreen.withOpacity(0.5)),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Text('RÉESSAYER',
@@ -457,8 +342,6 @@ class _ClientScreenState extends State<ClientScreen> {
     );
   }
 
-  // ── Profile Header ──────────────────────────────────────────────────────────
-
   Widget _buildProfileHeader(Client client) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18),
@@ -487,7 +370,6 @@ class _ClientScreenState extends State<ClientScreen> {
           padding: const EdgeInsets.all(20),
           child: Row(
             children: [
-              // Avatar
               Container(
                 width: 72,
                 height: 72,
@@ -510,7 +392,6 @@ class _ClientScreenState extends State<ClientScreen> {
                 ),
               ),
               const SizedBox(width: 16),
-              // Name + goal + infos
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -542,15 +423,14 @@ class _ClientScreenState extends State<ClientScreen> {
                     const SizedBox(height: 6),
                     Text(
                       '${client.age} yrs'
-                      '${client.gender != null ? '  ·  ${client.gender}' : ''}'
+                      '${client.gender.isNotEmpty ? '  ·  ${client.gender}' : ''}'
                       '  ·  ${client.frequency}x / week',
                       style: TextStyle(
                           color: Colors.white.withOpacity(0.45),
                           fontSize: 12,
                           fontWeight: FontWeight.w500),
                     ),
-                    // Coach assigné
-                    if (client.coachName != null) ...[
+                    if (client.coach != null) ...[
                       const SizedBox(height: 6),
                       Row(
                         children: [
@@ -558,7 +438,7 @@ class _ClientScreenState extends State<ClientScreen> {
                               color: kNeonGreen, size: 13),
                           const SizedBox(width: 4),
                           Text(
-                            'Coach: ${client.coachName}',
+                            'Coach: ${client.coach!.name}',
                             style: TextStyle(
                                 color: Colors.white.withOpacity(0.55),
                                 fontSize: 11),
@@ -569,7 +449,6 @@ class _ClientScreenState extends State<ClientScreen> {
                   ],
                 ),
               ),
-              // BMI badge — calculé à partir de weight/height de UserSession
               _bmiPill(client.bmi),
             ],
           ),
@@ -614,8 +493,7 @@ class _ClientScreenState extends State<ClientScreen> {
                 letterSpacing: 1)),
         const SizedBox(height: 2),
         Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
           decoration: BoxDecoration(
             color: color.withOpacity(0.15),
             borderRadius: BorderRadius.circular(8),
@@ -631,9 +509,6 @@ class _ClientScreenState extends State<ClientScreen> {
       ],
     );
   }
-
-  // ── Quick Stats Row ─────────────────────────────────────────────────────────
-  // Données : weight, height, weightGoal — toutes dans UserSession
 
   Widget _buildQuickStats(Client client) {
     return Padding(
@@ -686,8 +561,6 @@ class _ClientScreenState extends State<ClientScreen> {
     );
   }
 
-  // ── Progress Card ───────────────────────────────────────────────────────────
-
   Widget _buildProgressCard(Client client) {
     final startWeight = _weightHistory.first.weight;
     final currentWeight = client.weight;
@@ -705,8 +578,7 @@ class _ClientScreenState extends State<ClientScreen> {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: kNeonGreen.withOpacity(0.2)),
           boxShadow: [
-            BoxShadow(
-                color: kNeonGreen.withOpacity(0.06), blurRadius: 16)
+            BoxShadow(color: kNeonGreen.withOpacity(0.06), blurRadius: 16)
           ],
         ),
         child: Padding(
@@ -722,8 +594,7 @@ class _ClientScreenState extends State<ClientScreen> {
                   children: [
                     CustomPaint(
                       size: const Size(110, 110),
-                      painter: _CircularProgressPainter(
-                          progress: progress),
+                      painter: _CircularProgressPainter(progress: progress),
                     ),
                     Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -756,25 +627,18 @@ class _ClientScreenState extends State<ClientScreen> {
                             fontWeight: FontWeight.w800,
                             letterSpacing: 1.2)),
                     const SizedBox(height: 12),
-                    _progressRow('Start',
-                        '${startWeight.toStringAsFixed(1)} kg', 1.0),
+                    _progressRow('Start', '${startWeight.toStringAsFixed(1)} kg', 1.0),
                     const SizedBox(height: 8),
-                    _progressRow(
-                        'Current',
-                        '${currentWeight.toStringAsFixed(1)} kg',
-                        progress),
+                    _progressRow('Current', '${currentWeight.toStringAsFixed(1)} kg', progress),
                     const SizedBox(height: 8),
-                    _progressRow('Goal',
-                        '${goalWeight.toStringAsFixed(1)} kg', 0.15),
+                    _progressRow('Goal', '${goalWeight.toStringAsFixed(1)} kg', 0.15),
                     const SizedBox(height: 10),
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
                         color: kNeonGreen.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                            color: kNeonGreen.withOpacity(0.35)),
+                        border: Border.all(color: kNeonGreen.withOpacity(0.35)),
                       ),
                       child: Text(
                         '${lost.toStringAsFixed(1)} kg lost  ·  ${(totalToLose - lost).toStringAsFixed(1)} kg to go',
@@ -813,8 +677,7 @@ class _ClientScreenState extends State<ClientScreen> {
             child: LinearProgressIndicator(
               value: progress,
               backgroundColor: Colors.white10,
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(kNeonGreen),
+              valueColor: const AlwaysStoppedAnimation<Color>(kNeonGreen),
               minHeight: 3,
             ),
           ),
@@ -828,8 +691,6 @@ class _ClientScreenState extends State<ClientScreen> {
       ],
     );
   }
-
-  // ── Weight Chart ────────────────────────────────────────────────────────────
 
   Widget _buildWeightChart() {
     return Padding(
@@ -855,8 +716,7 @@ class _ClientScreenState extends State<ClientScreen> {
                           fontWeight: FontWeight.w800,
                           letterSpacing: 1.3)),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: kNeonGreen.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(12),
@@ -897,8 +757,6 @@ class _ClientScreenState extends State<ClientScreen> {
     );
   }
 
-  // ── Food List ───────────────────────────────────────────────────────────────
-
   Widget _buildFoodList() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18),
@@ -926,8 +784,7 @@ class _ClientScreenState extends State<ClientScreen> {
                       decoration: BoxDecoration(
                         color: kDarkCard,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                            color: Colors.white.withOpacity(0.06)),
+                        border: Border.all(color: Colors.white.withOpacity(0.06)),
                       ),
                       child: Center(
                         child: Text('Aucun aliment enregistré',
@@ -940,8 +797,7 @@ class _ClientScreenState extends State<ClientScreen> {
                       decoration: BoxDecoration(
                         color: kDarkCard,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                            color: Colors.white.withOpacity(0.06)),
+                        border: Border.all(color: Colors.white.withOpacity(0.06)),
                       ),
                       child: Column(
                         children: [
@@ -954,8 +810,7 @@ class _ClientScreenState extends State<ClientScreen> {
                                 if (i < _chosenFoods.length - 1)
                                   Divider(
                                       height: 1,
-                                      color:
-                                          Colors.white.withOpacity(0.06)),
+                                      color: Colors.white.withOpacity(0.06)),
                               ],
                             );
                           }),
@@ -991,9 +846,7 @@ class _ClientScreenState extends State<ClientScreen> {
             borderRadius: BorderRadius.circular(12),
             child: food.imageUrl.isNotEmpty
                 ? Image.network(food.imageUrl,
-                    width: 50,
-                    height: 50,
-                    fit: BoxFit.cover,
+                    width: 50, height: 50, fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => _foodFallback())
                 : _foodFallback(),
           ),
@@ -1010,8 +863,7 @@ class _ClientScreenState extends State<ClientScreen> {
                 const SizedBox(height: 3),
                 Text(food.calLabel,
                     style: TextStyle(
-                        color: Colors.white.withOpacity(0.45),
-                        fontSize: 11)),
+                        color: Colors.white.withOpacity(0.45), fontSize: 11)),
               ],
             ),
           ),
@@ -1041,8 +893,6 @@ class _ClientScreenState extends State<ClientScreen> {
         child: const Icon(Icons.fastfood, color: Colors.white38, size: 20),
       );
 
-  // ── Coach Program ───────────────────────────────────────────────────────────
-
   Widget _buildCoachProgram(Client client) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18),
@@ -1059,11 +909,9 @@ class _ClientScreenState extends State<ClientScreen> {
                       fontWeight: FontWeight.w800,
                       letterSpacing: 1.5)),
               GestureDetector(
-                onTap: () => setState(
-                    () => _programEditing = !_programEditing),
+                onTap: () => setState(() => _programEditing = !_programEditing),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: kNeonGreen, width: 1.5),
@@ -1071,9 +919,7 @@ class _ClientScreenState extends State<ClientScreen> {
                   child: Row(
                     children: [
                       Icon(
-                          _programEditing
-                              ? Icons.check
-                              : Icons.edit_outlined,
+                          _programEditing ? Icons.check : Icons.edit_outlined,
                           color: kNeonGreen,
                           size: 13),
                       const SizedBox(width: 5),
@@ -1090,27 +936,23 @@ class _ClientScreenState extends State<ClientScreen> {
             ],
           ),
           const SizedBox(height: 14),
-          if (client.coachName != null) ...[
+          if (client.coach != null) ...[
             Container(
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: kDarkCard,
                 borderRadius: BorderRadius.circular(16),
-                border:
-                    Border.all(color: kNeonGreen.withOpacity(0.15)),
+                border: Border.all(color: kNeonGreen.withOpacity(0.15)),
               ),
               child: Row(
                 children: [
                   ClipOval(
-                    child: client.coachImage != null &&
-                            client.coachImage!.isNotEmpty
-                        ? Image.network(client.coachImage!,
-                            width: 40,
-                            height: 40,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) =>
-                                _coachAvatarFallback())
+                    child: client.coach!.image != null &&
+                            client.coach!.image!.isNotEmpty
+                        ? Image.network(client.coach!.image!,
+                            width: 40, height: 40, fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _coachAvatarFallback())
                         : _coachAvatarFallback(),
                   ),
                   const SizedBox(width: 12),
@@ -1118,14 +960,14 @@ class _ClientScreenState extends State<ClientScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(client.coachName!,
+                        Text(client.coach!.name,
                             style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700)),
-                        if (client.coachSpecialty != null &&
-                            client.coachSpecialty!.isNotEmpty)
-                          Text(client.coachSpecialty!,
+                        if (client.coach!.specialty != null &&
+                            client.coach!.specialty!.isNotEmpty)
+                          Text(client.coach!.specialty!,
                               style: TextStyle(
                                   color: kNeonGreen.withOpacity(0.7),
                                   fontSize: 11)),
@@ -1147,23 +989,17 @@ class _ClientScreenState extends State<ClientScreen> {
                 width: _programEditing ? 1.5 : 1,
               ),
               boxShadow: _programEditing
-                  ? [
-                      BoxShadow(
-                          color: kNeonGreen.withOpacity(0.08),
-                          blurRadius: 20)
-                    ]
+                  ? [BoxShadow(color: kNeonGreen.withOpacity(0.08), blurRadius: 20)]
                   : [],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.03),
-                    borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(20)),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                   ),
                   child: Row(
                     children: [
@@ -1174,8 +1010,7 @@ class _ClientScreenState extends State<ClientScreen> {
                           color: kNeonGreen.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Icon(Icons.fitness_center,
-                            color: kNeonGreen, size: 15),
+                        child: const Icon(Icons.fitness_center, color: kNeonGreen, size: 15),
                       ),
                       const SizedBox(width: 10),
                       Column(
@@ -1198,8 +1033,7 @@ class _ClientScreenState extends State<ClientScreen> {
                           width: 8,
                           height: 8,
                           decoration: const BoxDecoration(
-                              color: kNeonGreen,
-                              shape: BoxShape.circle),
+                              color: kNeonGreen, shape: BoxShape.circle),
                         ),
                     ],
                   ),
@@ -1226,8 +1060,7 @@ class _ClientScreenState extends State<ClientScreen> {
                           ? 'Write the training & nutrition program here…'
                           : 'No program written yet. Tap EDIT to add one.',
                       hintStyle: TextStyle(
-                          color: Colors.white.withOpacity(0.25),
-                          fontSize: 13),
+                          color: Colors.white.withOpacity(0.25), fontSize: 13),
                       border: InputBorder.none,
                       isDense: true,
                       contentPadding: EdgeInsets.zero,
@@ -1251,7 +1084,7 @@ class _ClientScreenState extends State<ClientScreen> {
       );
 }
 
-// ─── Weight Chart ─────────────────────────────────────────────────────────────
+// ─── Painters (inchangés) ───────────────────────────────────────────────────
 
 class _WeightEntry {
   final String month;
@@ -1271,21 +1104,15 @@ class _WeightChartPainter extends CustomPainter {
     final maxW = entries.map((e) => e.weight).reduce(math.max) + 2;
 
     double xPos(int i) => i * size.width / (entries.length - 1);
-    double yPos(double w) =>
-        size.height - ((w - minW) / (maxW - minW)) * size.height;
+    double yPos(double w) => size.height - ((w - minW) / (maxW - minW)) * size.height;
 
-    final points = List.generate(entries.length,
-        (i) => Offset(xPos(i), yPos(entries[i].weight)));
+    final points = List.generate(entries.length, (i) => Offset(xPos(i), yPos(entries[i].weight)));
 
-    // Gradient fill
-    final fillPath = Path()
-      ..moveTo(points.first.dx, size.height);
+    final fillPath = Path()..moveTo(points.first.dx, size.height);
     for (final p in points) {
       fillPath.lineTo(p.dx, p.dy);
     }
-    fillPath
-      ..lineTo(points.last.dx, size.height)
-      ..close();
+    fillPath..lineTo(points.last.dx, size.height)..close();
 
     canvas.drawPath(
       fillPath,
@@ -1293,34 +1120,23 @@ class _WeightChartPainter extends CustomPainter {
         ..shader = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            kNeonGreen.withOpacity(0.25),
-            kNeonGreen.withOpacity(0.0)
-          ],
-        ).createShader(
-            Rect.fromLTWH(0, 0, size.width, size.height)),
+          colors: [kNeonGreen.withOpacity(0.25), kNeonGreen.withOpacity(0.0)],
+        ).createShader(Rect.fromLTWH(0, 0, size.width, size.height)),
     );
 
-    // Grid lines
     final gridPaint = Paint()
       ..color = Colors.white.withOpacity(0.06)
       ..strokeWidth = 1;
     for (int i = 0; i <= 3; i++) {
       final y = size.height * i / 3;
-      canvas.drawLine(
-          Offset(0, y), Offset(size.width, y), gridPaint);
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
 
-    // Curve line
-    final linePath = Path()
-      ..moveTo(points.first.dx, points.first.dy);
+    final linePath = Path()..moveTo(points.first.dx, points.first.dy);
     for (int i = 1; i < points.length; i++) {
-      final cp1 = Offset(
-          (points[i - 1].dx + points[i].dx) / 2, points[i - 1].dy);
-      final cp2 = Offset(
-          (points[i - 1].dx + points[i].dx) / 2, points[i].dy);
-      linePath.cubicTo(cp1.dx, cp1.dy, cp2.dx, cp2.dy, points[i].dx,
-          points[i].dy);
+      final cp1 = Offset((points[i - 1].dx + points[i].dx) / 2, points[i - 1].dy);
+      final cp2 = Offset((points[i - 1].dx + points[i].dx) / 2, points[i].dy);
+      linePath.cubicTo(cp1.dx, cp1.dy, cp2.dx, cp2.dy, points[i].dx, points[i].dy);
     }
 
     canvas.drawPath(
@@ -1341,10 +1157,8 @@ class _WeightChartPainter extends CustomPainter {
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
     );
 
-    // Dots + labels
     for (int i = 0; i < points.length; i++) {
-      canvas.drawCircle(
-          points[i], 5, Paint()..color = kNeonGreen.withOpacity(0.25));
+      canvas.drawCircle(points[i], 5, Paint()..color = kNeonGreen.withOpacity(0.25));
       canvas.drawCircle(points[i], 3, Paint()..color = kNeonGreen);
 
       final tp = TextPainter(
@@ -1357,17 +1171,13 @@ class _WeightChartPainter extends CustomPainter {
         ),
         textDirection: TextDirection.ltr,
       )..layout();
-      tp.paint(canvas,
-          Offset(points[i].dx - tp.width / 2, points[i].dy - 18));
+      tp.paint(canvas, Offset(points[i].dx - tp.width / 2, points[i].dy - 18));
     }
   }
 
   @override
-  bool shouldRepaint(covariant _WeightChartPainter old) =>
-      old.entries != entries;
+  bool shouldRepaint(covariant _WeightChartPainter old) => old.entries != entries;
 }
-
-// ─── Circular Progress Painter ────────────────────────────────────────────────
 
 class _CircularProgressPainter extends CustomPainter {
   final double progress;
@@ -1427,6 +1237,5 @@ class _CircularProgressPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _CircularProgressPainter old) =>
-      old.progress != progress;
+  bool shouldRepaint(covariant _CircularProgressPainter old) => old.progress != progress;
 }

@@ -197,9 +197,8 @@ Future<void> _loadUserImage() async {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            
-              if (_hasCoach) _buildChatButton(),
-              if (!_hasCoach) const SizedBox(width: 42), // Espace vide si pas de coach
+              if (true) _buildChatButton(),
+              if (!_hasCoach) const SizedBox(width: 42),
             RichText(
               text: TextSpan(
                 children: [

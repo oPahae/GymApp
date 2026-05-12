@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/models/client.dart';
 import 'package:test_hh/models/coach.dart';
+import 'package:test_hh/screens/coaches.dart';
 import 'package:test_hh/screens/login.dart';
 import 'package:test_hh/services/api_service.dart';
 import 'package:test_hh/session/user_session.dart';
@@ -1097,6 +1098,16 @@ class _ProfileClientState extends State<ProfileClient> {
         ),
         child: Column(
           children: [
+            GestureDetector(
+              onTap: () {
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const CoachesPage()),
+                  (route) => false,
+                );
+              },
+              child: Text("Search coach", style: TextStyle(color: Colors.lightGreenAccent)),
+            ),
             Icon(Icons.person_search_outlined, color: Colors.white.withOpacity(0.2), size: 36),
             const SizedBox(height: 10),
             Text(
