@@ -32,11 +32,20 @@ class _ProgramScreenState extends State<ProgramScreen> {
   int get _clientId => _session.id;
 
   @override
-  void initState() {
-    super.initState();
-    _selectedDayIndex = (DateTime.now().weekday - 1).clamp(0, 6);
-    _loadProgram();
+ @override
+void initState() {
+  super.initState();
+  _selectedDayIndex = (DateTime.now().weekday - 1).clamp(0, 6);
+  _ensureSessionThenLoad();
+}
+
+Future<void> _ensureSessionThenLoad() async {
+  if (!_session.isLoaded || _session.id == 0) {
+    await _session.load();
   }
+  print('=== ProgramScreen clientId: $_clientId ===');
+  _loadProgram();
+}
 
   Future<void> _loadProgram() {
     setState(() {
