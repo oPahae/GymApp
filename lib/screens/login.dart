@@ -1,6 +1,7 @@
 // lib/screens/login.dart
 import 'package:flutter/material.dart';
 import 'package:test_hh/constants/colors.dart';
+import 'package:test_hh/constants/names.dart';
 import 'package:test_hh/screens/clients.dart';
 import 'package:test_hh/screens/register.dart';
 import 'package:test_hh/screens/home.dart';
@@ -214,8 +215,8 @@ class _LoginScreenState extends State<LoginScreen> {
           child: const Icon(Icons.fitness_center, color: kNeonGreen, size: 24),
         ),
         const SizedBox(height: 8),
-        const Text(
-          'GYMFUEL',
+        Text(
+          gymName,
           style: TextStyle(
             color: kNeonGreen, fontSize: 22, fontWeight: FontWeight.w900,
             letterSpacing: 5,

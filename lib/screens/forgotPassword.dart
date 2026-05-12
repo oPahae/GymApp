@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:test_hh/constants/colors.dart';
-import 'package:test_hh/screens/login.dart';
+import 'package:test_hh/constants/names.dart';
 import 'package:test_hh/services/api_service.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -230,8 +230,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        const Text(
-          'GYMFUEL',
+        Text(
+          gymName,
           style: TextStyle(
             color: kNeonGreen,
             fontSize: 22,

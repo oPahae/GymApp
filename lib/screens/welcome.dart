@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:test_hh/constants/names.dart';
 import 'package:test_hh/screens/home.dart';
 
 const kBg       = Color(0xFF080D08);
@@ -115,8 +116,8 @@ class _SplashScreenState extends State<SplashScreen>
                         color: Colors.black, size: 52),
                   ),
                   const SizedBox(height: 20),
-                  const Text(
-                    'GYMFUEL',
+                  Text(
+                    gymName,
                     style: TextStyle(
                       color: kText,
                       fontSize: 30,
@@ -244,8 +245,8 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                             color: Colors.black, size: 22),
                       ),
                       const SizedBox(width: 10),
-                      const Text(
-                        'GYMFUEL',
+                      Text(
+                        gymName,
                         style: TextStyle(
                           color: kText,
                           fontSize: 16,
