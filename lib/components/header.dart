@@ -6,8 +6,6 @@ import 'package:test_hh/screens/profileCoach.dart';
 import 'package:test_hh/screens/chat.dart';
 import 'package:test_hh/screens/coachConv.dart';
 import 'package:test_hh/services/api_service.dart';
-import 'package:test_hh/models/client.dart';
-import 'package:test_hh/models/coach.dart';
 
 class Header extends StatefulWidget implements PreferredSizeWidget {
   const Header({super.key});
@@ -23,62 +21,66 @@ class _HeaderState extends State<Header> {
   bool _chatLoading = false;
   String? _userImageUrl;
   bool _isLoadingImage = true;
-  bool _hasCoach = false; // Variable pour vérifier si le client a un coach
+  bool _showChatButton = false; // true si coach OU client avec coach assigné
 
   @override
   void initState() {
     super.initState();
     _loadUserImage();
-    _checkIfClientHasCoach(); // Vérifier si le client a un coach
+    _checkChatAvailability();
   }
 
-  // Vérifier si le client a un coach assigné
-  Future<void> _checkIfClientHasCoach() async {
+  // Vérifie si le bouton chat doit être affiché :
+  // - Toujours pour un coach
+  // - Seulement si un coach est assigné pour un client
+  Future<void> _checkChatAvailability() async {
+    try {
+      final role = await ApiService.getUserRole();
+      if (role == 'coach') {
+        if (mounted) setState(() => _showChatButton = true);
+      } else if (role == 'client') {
+        final data = await ApiService.getMe();
+        if (data['success'] == true) {
+          final user = data['user'] ?? data['client'];
+          final coach = user?['coach'] as Map<String, dynamic>?;
+          if (mounted) {
+            setState(() => _showChatButton = coach != null && coach['id'] != null);
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) setState(() => _showChatButton = false);
+    }
+  }
+
+  // Charge l'image de profil (client ou coach)
+  Future<void> _loadUserImage() async {
+    setState(() => _isLoadingImage = true);
     try {
       final role = await ApiService.getUserRole();
       if (role == 'client') {
         final data = await ApiService.getMe();
         if (data['success'] == true) {
-          final user = data['user'] ?? data['client'];
-          final coach = user?['coach'] as Map<String, dynamic>?;
-          setState(() => _hasCoach = coach != null && coach['id'] != null);
+          final user = data['client'] ?? data['user'];
+          if (user != null) {
+            setState(() => _userImageUrl = user['image'] as String?);
+          }
+        }
+      } else if (role == 'coach') {
+        final data = await ApiService.getMyCoachProfile();
+        if (data['success'] == true) {
+          final coach = data['coach'] as Map<String, dynamic>?;
+          if (coach != null) {
+            setState(() => _userImageUrl = coach['image'] as String?);
+          }
         }
       }
     } catch (e) {
-      // En cas d'erreur, on suppose qu'il n'y a pas de coach
-      setState(() => _hasCoach = false);
+      // Ignorer l'erreur
+    } finally {
+      if (mounted) setState(() => _isLoadingImage = false);
     }
   }
-
-  // Charger l'image de l'utilisateur (client ou coach)
-  // ✅ APRÈS (corrigé)
-Future<void> _loadUserImage() async {
-  setState(() => _isLoadingImage = true);
-  try {
-    final role = await ApiService.getUserRole();
-    if (role == 'client') {
-      final data = await ApiService.getMe();
-      if (data['success'] == true) {
-        final user = data['client'] ?? data['user']; // ← fallback ajouté
-        if (user != null) {
-          setState(() => _userImageUrl = user['image'] as String?);
-        }
-      }
-    } else if (role == 'coach') {
-      final data = await ApiService.getMyCoachProfile();
-      if (data['success'] == true) {
-        final coach = data['coach'] as Map<String, dynamic>?;
-        if (coach != null) {
-          setState(() => _userImageUrl = coach['image'] as String?);
-        }
-      }
-    }
-  } catch (e) {
-    // Ignorer l'erreur
-  } finally {
-    if (mounted) setState(() => _isLoadingImage = false);
-  }
-}
 
   // ══════════════════════════════════════════════════════
   //  NAVIGATION CHAT
@@ -111,7 +113,7 @@ Future<void> _loadUserImage() async {
       return;
     }
 
-    final user = data['user'] as Map<String, dynamic>?;
+    final user = data['user'] ?? data['client'] as Map<String, dynamic>?;
     final clientId = user?['id'] as int?;
     final coach = user?['coach'] as Map<String, dynamic>?;
     final coachId = coach?['id'] as int?;
@@ -197,8 +199,13 @@ Future<void> _loadUserImage() async {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-              if (true) _buildChatButton(),
-              if (!_hasCoach) const SizedBox(width: 42),
+            // Bouton chat OU placeholder pour garder le titre centré
+            if (_showChatButton)
+              _buildChatButton()
+            else
+              const SizedBox(width: 42),
+
+            // Titre de l'app
             RichText(
               text: TextSpan(
                 children: [
@@ -223,17 +230,9 @@ Future<void> _loadUserImage() async {
                 ],
               ),
             ),
-            Row(
-              children: [
-                // const Icon(Icons.signal_cellular_alt, color: Colors.white, size: 18),
-                // const SizedBox(width: 4),
-                // const Icon(Icons.wifi, color: Colors.white, size: 18),
-                // const SizedBox(width: 4),
-                // const Icon(Icons.battery_full, color: Colors.white, size: 18),
-                // const SizedBox(width: 12),
-                _buildAvatar(context),
-              ],
-            ),
+
+            // Avatar profil
+            _buildAvatar(context),
           ],
         ),
       ),
@@ -257,9 +256,11 @@ Future<void> _loadUserImage() async {
             child: _chatLoading
                 ? const Padding(
                     padding: EdgeInsets.all(11),
-                    child: CircularProgressIndicator(color: kNeonGreen, strokeWidth: 2),
+                    child: CircularProgressIndicator(
+                        color: kNeonGreen, strokeWidth: 2),
                   )
-                : const Icon(Icons.chat_bubble_outline, color: Colors.white, size: 20),
+                : const Icon(Icons.chat_bubble_outline,
+                    color: Colors.white, size: 20),
           ),
           if (!_chatLoading)
             Positioned(
@@ -286,15 +287,16 @@ Future<void> _loadUserImage() async {
     );
   }
 
-  // Affichage de l'avatar avec l'image de l'utilisateur
   Widget _buildAvatar(BuildContext context) {
     return GestureDetector(
       onTap: () async {
         final role = await ApiService.getUserRole();
         if (role == 'client') {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileClient()));
+          Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const ProfileClient()));
         } else if (role == 'coach') {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileCoach()));
+          Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const ProfileCoach()));
         } else {
           _showSnack('Veuillez vous connecter pour accéder au profil.');
         }
@@ -317,7 +319,9 @@ Future<void> _loadUserImage() async {
           child: _isLoadingImage
               ? Container(
                   color: Colors.grey[800],
-                  child: const Center(child: CircularProgressIndicator(color: kNeonGreen, strokeWidth: 2)),
+                  child: const Center(
+                      child: CircularProgressIndicator(
+                          color: kNeonGreen, strokeWidth: 2)),
                 )
               : (_userImageUrl != null && _userImageUrl!.isNotEmpty
                   ? Image.network(
@@ -325,19 +329,23 @@ Future<void> _loadUserImage() async {
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => Container(
                         color: Colors.grey[800],
-                        child: const Icon(Icons.person, color: Colors.white, size: 22),
+                        child: const Icon(Icons.person,
+                            color: Colors.white, size: 22),
                       ),
                       loadingBuilder: (_, child, loadingProgress) {
                         if (loadingProgress == null) return child;
                         return Container(
                           color: Colors.grey[800],
-                          child: const Center(child: CircularProgressIndicator(color: kNeonGreen, strokeWidth: 2)),
+                          child: const Center(
+                              child: CircularProgressIndicator(
+                                  color: kNeonGreen, strokeWidth: 2)),
                         );
                       },
                     )
                   : Container(
                       color: Colors.grey[800],
-                      child: const Icon(Icons.person, color: Colors.white, size: 22),
+                      child: const Icon(Icons.person,
+                          color: Colors.white, size: 22),
                     )),
         ),
       ),

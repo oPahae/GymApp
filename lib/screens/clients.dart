@@ -7,11 +7,11 @@ import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/constants/urls.dart';
 import 'package:test_hh/screens/client.dart';
 import 'package:test_hh/models/client.dart';
+import 'package:test_hh/session/user_session.dart';
 
 // ── Screen ──────────────────────────────────────────────────────────────────
 class ClientsScreen extends StatefulWidget {
-  final int coachID;
-  const ClientsScreen({super.key, this.coachID = 3}); // example coachID = 1
+  const ClientsScreen({super.key});
 
   @override
   State<ClientsScreen> createState() => _ClientsScreenState();
@@ -26,13 +26,16 @@ class _ClientsScreenState extends State<ClientsScreen> {
   bool _isLoading = true;
   String? _errorMessage;
 
+  // ID du coach connecté, chargé depuis UserSession
+  int? _coachID;
+
   @override
   void initState() {
     super.initState();
-    _fetchClients();
     _searchCtrl.addListener(() {
       setState(() => _query = _searchCtrl.text.toLowerCase());
     });
+    _initSession();
   }
 
   @override
@@ -41,16 +44,48 @@ class _ClientsScreenState extends State<ClientsScreen> {
     super.dispose();
   }
 
+  // ── Session ────────────────────────────────────────────────────────────────
+
+  /// Charge la session si nécessaire, puis récupère les clients.
+  Future<void> _initSession() async {
+  print('=== _initSession START ===');
+  
+  // ✅ Toujours recharger pour avoir les données fraîches
+  final ok = await UserSession.instance.load();
+  print('=== load() returned: $ok ===');
+  print('=== coachID: ${UserSession.instance.id} ===');
+  print('=== role: ${UserSession.instance.role} ===');
+  
+  if (!ok) {
+    setState(() {
+      _errorMessage = 'Impossible de récupérer votre profil.';
+      _isLoading = false;
+    });
+    return;
+  }
+
+  _coachID = UserSession.instance.id;
+  await _fetchClients();
+}
+
   // ── API calls ──────────────────────────────────────────────────────────────
 
   Future<void> _fetchClients() async {
+    if (_coachID == null) {
+      setState(() {
+        _errorMessage = 'Identifiant coach introuvable.';
+        _isLoading = false;
+      });
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      final uri = Uri.parse('$kBaseUrl/api/pahae/clients/coach/${widget.coachID}');
+      final uri = Uri.parse('$kBaseUrl/api/pahae/clients/coach/$_coachID');
       final response = await http.get(uri).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
@@ -75,10 +110,13 @@ class _ClientsScreenState extends State<ClientsScreen> {
   }
 
   Future<void> _removeClientFromCoach(Client client) async {
+    if (_coachID == null) return;
+
     try {
       final uri = Uri.parse(
-          '$kBaseUrl/api/pahae/clients/${client.id}/coach/${widget.coachID}');
-      final response = await http.delete(uri).timeout(const Duration(seconds: 10));
+          '$kBaseUrl/api/pahae/clients/${client.id}/coach/$_coachID');
+      final response =
+          await http.delete(uri).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         setState(() => _clients.removeWhere((c) => c.id == client.id));
@@ -239,7 +277,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
             ),
             const SizedBox(height: 20),
             GestureDetector(
-              onTap: _fetchClients,
+              onTap: _initSession,
               child: Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
@@ -280,7 +318,6 @@ class _ClientsScreenState extends State<ClientsScreen> {
               letterSpacing: 1.5,
             ),
           ),
-          // Refresh button
           GestureDetector(
             onTap: _fetchClients,
             child: Icon(
@@ -375,8 +412,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
               child: Text(
                 e.key,
                 style: TextStyle(
-                  color:
-                      selected ? kNeonGreen : Colors.white.withOpacity(0.5),
+                  color: selected ? kNeonGreen : Colors.white.withOpacity(0.5),
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.8,
@@ -454,8 +490,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
           height: 60,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border:
-                Border.all(color: kNeonGreen.withOpacity(0.4), width: 2),
+            border: Border.all(color: kNeonGreen.withOpacity(0.4), width: 2),
             boxShadow: [
               BoxShadow(
                 color: kNeonGreen.withOpacity(0.12),
@@ -540,7 +575,8 @@ class _ClientsScreenState extends State<ClientsScreen> {
               icon: client.gender.toLowerCase() == "male"
                   ? Icons.male_outlined
                   : Icons.female_outlined,
-              label: client.gender.toLowerCase() == "male" ? 'Male' : 'Female',
+              label:
+                  client.gender.toLowerCase() == "male" ? 'Male' : 'Female',
             ),
           ],
         ),
@@ -599,7 +635,6 @@ class _ClientsScreenState extends State<ClientsScreen> {
   // ── Empty state ────────────────────────────────────────────────────────────
 
   Widget _buildEmpty() {
-    // If filtering/searching and nothing matches
     final isFiltering = _query.isNotEmpty || _filterGender != null;
     return Center(
       child: Column(
