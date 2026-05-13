@@ -12,6 +12,8 @@ const router = express.Router();
 // --- Middleware ---
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers['authorization'];
+  console.log('authHeader');
+  console.log(authHeader);
   if (!authHeader)
     return res.status(401).json({ success: false, message: 'Token manquant.' });
 

@@ -198,16 +198,17 @@ CREATE TABLE RecipesDay (
 -- ======================
 -- TABLE: Messages
 -- ======================
-CREATE TABLE Messages (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    text VARCHAR(255),
-    time DATETIME,
-    isUser BOOLEAN,
-    coachID INT,
-    clientID INT,
-    FOREIGN KEY (coachID) REFERENCES Coaches(id),
-    FOREIGN KEY (clientID) REFERENCES Clients(id)
-);
+CREATE TABLE `messages` (
+  `id` int(11) NOT NULL,
+  `text` text,
+  `time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `isUser` tinyint(1) NOT NULL,
+  `type` enum('text','image','audio','video') NOT NULL DEFAULT 'text',
+  `status` enum('sending','sent','delivered','read') NOT NULL DEFAULT 'sent',
+  `mediaUrl` varchar(512) DEFAULT NULL,
+  `coachID` int(11) NOT NULL,
+  `clientID` int(11) NOT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1;
 -- Programme coach
 CREATE TABLE CoachPrograms (
     id INT PRIMARY KEY AUTO_INCREMENT,
