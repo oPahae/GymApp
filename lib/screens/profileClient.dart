@@ -95,30 +95,31 @@ class _ProfileClientState extends State<ProfileClient> {
 
   // --- Chargement du client ---
   Future<void> _loadClient() async {
-    setState(() { _isLoading = true; _error = null; });
+  setState(() { _isLoading = true; _error = null; });
 
-    try {
-      bool sessionLoaded = await UserSession.instance.load();
-      if (!sessionLoaded && widget.clientId == null) {
-        setState(() { _error = 'Failed to load user session.'; _isLoading = false; });
-        return;
-      }
-
-      if (widget.clientId != null) {
-        final res = await ApiService.getClient(widget.clientId!);
-        if (!mounted) return;
-        if (res['success'] == true && res['client'] != null) {
-          _applyClient(Client.fromJson(res['client'] as Map<String, dynamic>));
-        } else {
-          setState(() { _error = res['message'] ?? 'Failed to load client.'; _isLoading = false; });
-        }
-      } else {
-        _applyClientFromSession();
-      }
-    } catch (e) {
-      setState(() { _error = 'An error occurred: $e'; _isLoading = false; });
+  try {
+    bool sessionLoaded = await UserSession.instance.load();
+    if (!sessionLoaded && widget.clientId == null) {
+      setState(() { _error = 'Failed to load user session.'; _isLoading = false; });
+      return;
     }
+
+    // ✅ Toujours appeler l'API pour avoir le coach inclus
+    final int idToLoad = widget.clientId ?? UserSession.instance.id;
+    final res = await ApiService.getClient(idToLoad);
+
+    if (!mounted) return;
+
+    if (res['success'] == true && res['client'] != null) {
+      _applyClient(Client.fromJson(res['client'] as Map<String, dynamic>));
+    } else {
+      // Fallback seulement si l'API échoue
+      _applyClientFromSession();
+    }
+  } catch (e) {
+    setState(() { _error = 'An error occurred: $e'; _isLoading = false; });
   }
+}
 
   void _applyClientFromSession() {
     final session = UserSession.instance;
@@ -140,6 +141,7 @@ class _ProfileClientState extends State<ProfileClient> {
   }
 
   void _applyClient(Client client) {
+     print('=== coach reçu: ${client.coach?.name} / id: ${client.coach?.id}');
     setState(() {
       _client = client;
       _imageUrl = client.image.isNotEmpty ? client.image : null;
