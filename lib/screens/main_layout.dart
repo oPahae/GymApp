@@ -71,21 +71,30 @@ class _MainLayoutState extends State<MainLayout> {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: PageView(
-        controller: _pageController,
-        onPageChanged: _onPageChanged,
-        physics: const BouncingScrollPhysics(),
-        children: screens,
+      body: Stack(
+        children: [
+          PageView(
+            controller: _pageController,
+            onPageChanged: _onPageChanged,
+            physics: const BouncingScrollPhysics(),
+            children: screens,
+          ),
+          Positioned(
+            left: 14,
+            right: 14,
+            bottom: MediaQuery.of(context).padding.bottom + 10,
+            child: isClient
+                ? NavBar(
+                    selectedIndex: _selectedIndex,
+                    onTap: _onItemTapped,
+                  )
+                : NavBarCoach(
+                    selectedIndex: _selectedIndex,
+                    onTap: _onItemTapped,
+                  ),
+          ),
+        ],
       ),
-      bottomNavigationBar: isClient
-          ? NavBar(
-              selectedIndex: _selectedIndex,
-              onTap: _onItemTapped,
-            )
-          : NavBarCoach(
-              selectedIndex: _selectedIndex,
-              onTap: _onItemTapped,
-            ),
     );
   }
 }
