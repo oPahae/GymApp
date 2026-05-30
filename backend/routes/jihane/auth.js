@@ -1,19 +1,19 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
-import crypto from 'crypto';
 import db from '../../config/db.js';
-import { sendPasswordResetEmail } from './emailService.js';
+import { sendPasswordResetEmail, htmlError, htmlResetForm } from './emailService.js';
 
 // --- Constants ---
 const JWT_SECRET = 'secret';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
 const router = express.Router();
 
 // --- Middleware ---
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers['authorization'];
-  console.log("authHeader")
-  console.log(authHeader)
+  console.log("authHeader");
+  console.log(authHeader);
   if (!authHeader)
     return res.status(401).json({ success: false, message: 'Token manquant.' });
 
@@ -131,9 +131,7 @@ router.get('/me', authMiddleware, async (req, res) => {
   try {
     if (role === 'coach') {
       const [rows] = await db.query(
-        `SELECT id, name, email, image, specialty, bio, createdAt
-         FROM Coaches WHERE id = ?`,
-        [id]
+        `SELECT id, name, email, image, specialty, bio, createdAt FROM Coaches WHERE id = ?`, [id]
       );
       if (rows.length === 0)
         return res.status(404).json({ success: false, message: 'Coach introuvable.' });
@@ -141,14 +139,10 @@ router.get('/me', authMiddleware, async (req, res) => {
       const [clients] = await db.query(
         `SELECT id, name, image, birth, gender, weight, height,
                 frequency, goal, weightGoal, createdAt, coachID
-         FROM Clients WHERE coachID = ?`,
-        [id]
+         FROM Clients WHERE coachID = ?`, [id]
       );
 
-      return res.json({
-        success: true, role: 'coach',
-        coach: { ...rows[0], clients }
-      });
+      return res.json({ success: true, role: 'coach', coach: { ...rows[0], clients } });
     }
 
     // role === 'client'
@@ -165,16 +159,12 @@ router.get('/me', authMiddleware, async (req, res) => {
          co.bio       AS coach_bio
        FROM Clients c
        LEFT JOIN Coaches co ON co.id = c.coachID
-       WHERE c.id = ?`,
-      [id]
+       WHERE c.id = ?`, [id]
     );
     if (rows.length === 0)
       return res.status(404).json({ success: false, message: 'Client introuvable.' });
 
-    return res.json({
-      success: true, role: 'client',
-      user: _formatClient(rows[0])
-    });
+    return res.json({ success: true, role: 'client', user: _formatClient(rows[0]) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Erreur serveur.' });
@@ -182,6 +172,7 @@ router.get('/me', authMiddleware, async (req, res) => {
 });
 
 // POST /api/jihane/auth/forgot-password
+// Reçoit l'email, envoie un lien contenant l'email (pas de token stocké)
 router.post('/forgot-password', async (req, res) => {
   const { email } = req.body;
   if (!email)
@@ -191,18 +182,13 @@ router.post('/forgot-password', async (req, res) => {
     const [users] = await db.query(
       'SELECT id, name, email FROM Clients WHERE email = ?', [email]
     );
+
+    // Réponse identique que l'email existe ou non (sécurité)
     if (users.length === 0)
       return res.json({ success: true, message: 'Si cet email existe, un lien a été envoyé.' });
 
     const user = users[0];
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetTokenExpiry = new Date(Date.now() + 3600000);
-
-    await db.query(
-      'UPDATE Clients SET resetToken = ?, resetTokenExpiry = ? WHERE id = ?',
-      [resetToken, resetTokenExpiry, user.id]
-    );
-    await sendPasswordResetEmail(user.email, resetToken, user.name, 'client');
+    await sendPasswordResetEmail(user.email, user.name, 'client');
 
     res.json({ success: true, message: 'Email de réinitialisation envoyé.' });
   } catch (err) {
@@ -211,19 +197,21 @@ router.post('/forgot-password', async (req, res) => {
   }
 });
 
-// GET /api/jihane/auth/reset-password?token=xxx
+// GET /api/jihane/auth/reset-password?email=xxx
+// Affiche le formulaire de reset
 router.get('/reset-password', async (req, res) => {
-  const { token } = req.query;
-  if (!token) return res.send(htmlError('Token manquant', 'Lien invalide.'));
+  const { email } = req.query;
+  if (!email)
+    return res.send(htmlError('Email manquant', 'Lien invalide.'));
 
   try {
     const [users] = await db.query(
-      'SELECT id FROM Clients WHERE resetToken = ? AND resetTokenExpiry > NOW()', [token]
+      'SELECT id FROM Clients WHERE email = ?', [email]
     );
     if (users.length === 0)
-      return res.send(htmlError('Lien expiré ou invalide', 'Demandez un nouveau lien.'));
+      return res.send(htmlError('Email introuvable', 'Aucun compte associé à cet email.'));
 
-    res.send(htmlResetForm(token, '/api/jihane/auth/reset-password'));
+    res.send(htmlResetForm(email, `${BASE_URL}/api/jihane/auth/reset-password`));
   } catch (err) {
     console.error(err);
     res.status(500).send('Erreur serveur.');
@@ -231,29 +219,60 @@ router.get('/reset-password', async (req, res) => {
 });
 
 // POST /api/jihane/auth/reset-password
+// Reçoit { email, newPassword } et met à jour le mot de passe
 router.post('/reset-password', async (req, res) => {
-  const { token, newPassword } = req.body;
-  if (!token || !newPassword)
-    return res.status(400).json({ success: false, message: 'Token et mot de passe requis.' });
+  const { email, newPassword } = req.body;
+  if (!email || !newPassword)
+    return res.status(400).json({ success: false, message: 'Email et mot de passe requis.' });
   if (newPassword.length < 6)
     return res.status(400).json({ success: false, message: 'Au moins 6 caractères.' });
 
   try {
     const [users] = await db.query(
-      'SELECT id FROM Clients WHERE resetToken = ? AND resetTokenExpiry > NOW()', [token]
+      'SELECT id FROM Clients WHERE email = ?', [email]
     );
     if (users.length === 0)
-      return res.status(400).json({ success: false, message: 'Token invalide ou expiré.' });
+      return res.status(400).json({ success: false, message: 'Email introuvable.' });
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await db.query(
-      'UPDATE Clients SET password = ?, resetToken = NULL, resetTokenExpiry = NULL WHERE id = ?',
-      [hashedPassword, users[0].id]
+      'UPDATE Clients SET password = ? WHERE email = ?',
+      [hashedPassword, email]
     );
+
     res.json({ success: true, message: 'Mot de passe réinitialisé avec succès.' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Erreur serveur.' });
+  }
+});
+
+// POST /api/jihane/auth/create-coach
+router.post('/create-coach', async (req, res) => {
+  const { name, email, password, image, specialty, bio } = req.body;
+  if (!name || !email || !password)
+    return res.status(400).json({ success: false, message: 'Name, email and password are required.' });
+
+  try {
+    const [existing] = await db.query('SELECT id FROM Coaches WHERE email = ?', [email]);
+    if (existing.length > 0)
+      return res.status(400).json({ success: false, message: 'Email already exists.' });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const [result] = await db.query(
+      `INSERT INTO Coaches (name, email, password, image, specialty, bio, createdAt)
+       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+      [name, email, hashedPassword, image || null, specialty || null, bio || null]
+    );
+
+    res.status(201).json({
+      success: true,
+      coach: { id: result.insertId, name, email },
+      message: 'Coach created successfully.'
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error.' });
   }
 });
 
@@ -283,95 +302,5 @@ function _formatClient(row) {
     } : null,
   };
 }
-
-// --- HTML Helpers (Placeholders) ---
-function htmlError(title, message) {
-  return `<html><body><h1>${title}</h1><p>${message}</p></body></html>`;
-}
-
-function htmlResetForm(token, action) {
-  return `
-    <html>
-      <body>
-        <h1>Réinitialiser le mot de passe</h1>
-        <form method="POST" action="${action}">
-          <input type="hidden" name="token" value="${token}" />
-          <label>Nouveau mot de passe: <input type="password" name="newPassword" required /></label>
-          <button type="submit">Réinitialiser</button>
-        </form>
-      </body>
-    </html>
-  `;
-}
-
-// POST /api/jihane/auth/create-coach
-router.post('/create-coach', async (req, res) => {
-  const {
-    name,
-    email,
-    password,
-    image,
-    specialty,
-    bio
-  } = req.body;
-
-  if (!name || !email || !password) {
-    return res.status(400).json({
-      success: false,
-      message: 'Name, email and password are required.'
-    });
-  }
-
-  try {
-    // Vérifier si email existe déjà
-    const [existing] = await db.query(
-      'SELECT id FROM Coaches WHERE email = ?',
-      [email]
-    );
-
-    if (existing.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email already exists.'
-      });
-    }
-
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Insert coach
-    const [result] = await db.query(
-      `INSERT INTO Coaches
-      (name, email, password, image, specialty, bio, createdAt)
-      VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-      [
-        name,
-        email,
-        hashedPassword,
-        image || null,
-        specialty || null,
-        bio || null
-      ]
-    );
-
-    res.status(201).json({
-      success: true,
-      coach: {
-        id: result.insertId,
-        name,
-        email
-      },
-      message: 'Coach created successfully.'
-    });
-
-  } catch (err) {
-    console.error(err);
-
-    res.status(500).json({
-      success: false,
-      message: 'Server error.'
-    });
-  }
-});
 
 export { router as default, authMiddleware };
