@@ -1,7 +1,8 @@
+// tutorial_screen.dart — version finale complète
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:chewie/chewie.dart';
-import 'package:video_player/video_player.dart';
+import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import 'package:test_hh/components/header.dart';
 import 'package:test_hh/constants/colors.dart';
 import 'exercice.dart';
@@ -14,12 +15,14 @@ class TutorialScreen extends StatefulWidget {
   State<TutorialScreen> createState() => _TutorialScreenState();
 }
 
-class _TutorialScreenState extends State<TutorialScreen> {
+class _TutorialScreenState extends State<TutorialScreen>
+    with AutomaticKeepAliveClientMixin {
   int _activeStep = 0;
-  VideoPlayerController? _videoController;
-  ChewieController? _chewieController;
-  bool _videoReady = false;
-  String? _videoError;
+  YoutubePlayerController? _ytController;
+  bool _isYouTube = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -27,67 +30,65 @@ class _TutorialScreenState extends State<TutorialScreen> {
     _initVideo();
   }
 
-  Future<void> _initVideo() async {
-    final url = widget.exercice.video;
-    if (url.isEmpty) return;
-
-    try {
-      _videoController = VideoPlayerController.networkUrl(
-        Uri.parse(url),
-        videoPlayerOptions: VideoPlayerOptions(
-          mixWithOthers: true,
-          allowBackgroundPlayback: false,
-        ),
-      );
-      await _videoController!.initialize();
-
-      _chewieController = ChewieController(
-        videoPlayerController: _videoController!,
-        autoPlay: false,
-        looping: false,
-        aspectRatio: _videoController!.value.aspectRatio,
-        allowFullScreen: true,
-        allowMuting: true,
-        showControls: true,
-        placeholder: widget.exercice.image.isNotEmpty
-            ? Image.network(widget.exercice.image, fit: BoxFit.cover)
-            : Container(color: const Color(0xFF111111)),
-        errorBuilder: (context, msg) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, color: Colors.white38, size: 32),
-              const SizedBox(height: 8),
-              Text(
-                'Impossible de charger la vidéo',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.45),
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-
-      if (mounted) setState(() => _videoReady = true);
-    } catch (e) {
-      debugPrint('VIDEO ERROR: $e');
-      if (mounted) setState(() => _videoError = e.toString());
+  @override
+  void didUpdateWidget(TutorialScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.exercice.video != widget.exercice.video) {
+      _disposeController();
+      _initVideo();
     }
+  }
+
+  void _disposeController() {
+    _ytController?.close();
+    _ytController = null;
+  }
+
+  void _initVideo() {
+    final url = widget.exercice.video;
+    if (url.isEmpty) {
+      setState(() => _isYouTube = false);
+      return;
+    }
+
+    final videoId = _extractYouTubeId(url);
+
+    if (videoId != null) {
+      _ytController = YoutubePlayerController.fromVideoId(
+        videoId: videoId,
+        params: const YoutubePlayerParams(
+          showControls: true,
+          showFullscreenButton: true,
+          playsInline: true,
+        ),
+      );
+      setState(() => _isYouTube = true);
+    } else {
+      setState(() => _isYouTube = false);
+    }
+  }
+
+  String? _extractYouTubeId(String url) {
+    final regExp = RegExp(
+      r'^.*(youtu\.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*',
+    );
+    final match = regExp.firstMatch(url);
+    final id = match?.group(2);
+    return (id != null && id.length == 11) ? id : null;
   }
 
   @override
   void dispose() {
-    _chewieController?.dispose();
-    _videoController?.dispose();
+    _disposeController();
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final ex = widget.exercice;
+
     return Scaffold(
       backgroundColor: kDarkBg,
       appBar: Header(),
@@ -125,6 +126,71 @@ class _TutorialScreenState extends State<TutorialScreen> {
     );
   }
 
+  // ✅ FIX PRINCIPAL : AspectRatio + aspectRatio sur YoutubePlayerScaffold
+  Widget _buildVideoPlayer(ExerciceModel ex) {
+    if (_isYouTube && _ytController != null) {
+      return YoutubePlayerScaffold(
+        controller: _ytController!,
+        aspectRatio: 16 / 9,
+        builder: (context, player) {
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: player,
+          );
+        },
+      );
+    }
+
+    // Placeholder quand pas de vidéo YouTube
+    return AspectRatio(
+      aspectRatio: 16 / 9,
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: const Color(0xFF0E0E0E),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        ),
+        clipBehavior: Clip.hardEdge,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (ex.image.isNotEmpty)
+              Image.network(
+                ex.image,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) =>
+                    Container(color: const Color(0xFF111111)),
+              )
+            else
+              Container(color: const Color(0xFF111111)),
+            Container(color: Colors.black.withValues(alpha: 0.5)),
+            Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: Text(
+                  'Aucune vidéo disponible',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.45),
+                    fontSize: 10,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildTopBar(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
@@ -140,8 +206,11 @@ class _TutorialScreenState extends State<TutorialScreen> {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.white10),
               ),
-              child: const Icon(Icons.arrow_back_ios_new,
-                  color: Colors.white, size: 16),
+              child: const Icon(
+                Icons.arrow_back_ios_new,
+                color: Colors.white,
+                size: 16,
+              ),
             ),
           ),
           const SizedBox(width: 14),
@@ -156,156 +225,9 @@ class _TutorialScreenState extends State<TutorialScreen> {
               ),
             ),
           ),
-          GestureDetector(
-            onTap: () => SystemChrome.setPreferredOrientations([
-              DeviceOrientation.landscapeLeft,
-              DeviceOrientation.landscapeRight,
-            ]),
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: kDarkCard,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white10),
-              ),
-              child: Icon(Icons.fullscreen,
-                  color: Colors.white.withOpacity(0.6), size: 20),
-            ),
-          ),
         ],
       ),
     );
-  }
-
-  Widget _buildVideoPlayer(ExerciceModel ex) {
-    return Container(
-      height: 210,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: const Color(0xFF0E0E0E),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
-      ),
-      clipBehavior: Clip.hardEdge,
-      child: _buildVideoContent(ex),
-    );
-  }
-
-  Widget _buildVideoContent(ExerciceModel ex) {
-    // Pas de vidéo attachée
-    if (ex.video.isEmpty) {
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          if (ex.image.isNotEmpty)
-            Image.network(
-              ex.image,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
-                color: const Color(0xFF111111),
-                child: const Icon(Icons.videocam_off,
-                    color: Colors.white12, size: 40),
-              ),
-            )
-          else
-            Container(
-              color: const Color(0xFF111111),
-              child: const Icon(Icons.videocam_off,
-                  color: Colors.white12, size: 40),
-            ),
-          Container(color: Colors.black.withOpacity(0.5)),
-          Center(
-            child: Container(
-              padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.6),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.white12),
-              ),
-              child: Text(
-                'Aucune vidéo disponible',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.45),
-                  fontSize: 10,
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    // Erreur de chargement vidéo
-    if (_videoError != null) {
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          if (ex.image.isNotEmpty)
-            Image.network(ex.image, fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
-                    Container(color: const Color(0xFF111111))),
-          Container(color: Colors.black.withOpacity(0.5)),
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error_outline,
-                    color: Colors.white38, size: 32),
-                const SizedBox(height: 8),
-                Text(
-                  'Video could not be loaded',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.45),
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _videoError = null;
-                      _videoReady = false;
-                    });
-                    _initVideo();
-                  },
-                  child: Text(
-                    'Retry',
-                    style: TextStyle(
-                      color: kNeonGreen.withOpacity(0.7),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      );
-    }
-
-    // Chargement en cours
-    if (!_videoReady || _chewieController == null) {
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          if (ex.image.isNotEmpty)
-            Image.network(ex.image, fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
-                    Container(color: const Color(0xFF111111))),
-          Container(color: Colors.black.withOpacity(0.4)),
-          const Center(
-            child: CircularProgressIndicator(
-                color: kNeonGreen, strokeWidth: 2),
-          ),
-        ],
-      );
-    }
-
-    // Player vidéo prêt
-    return Chewie(controller: _chewieController!);
   }
 
   Widget _buildExerciceTitle(ExerciceModel ex) {
@@ -329,7 +251,7 @@ class _TutorialScreenState extends State<TutorialScreen> {
               Text(
                 ex.part.name,
                 style: TextStyle(
-                  color: kNeonGreen.withOpacity(0.7),
+                  color: kNeonGreen.withValues(alpha: 0.7),
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   letterSpacing: 0.5,
@@ -351,7 +273,7 @@ class _TutorialScreenState extends State<TutorialScreen> {
         Text(
           'STEP-BY-STEP',
           style: TextStyle(
-            color: kNeonGreen.withOpacity(0.9),
+            color: kNeonGreen.withValues(alpha: 0.9),
             fontSize: 10,
             fontWeight: FontWeight.w700,
             letterSpacing: 1,
@@ -359,9 +281,9 @@ class _TutorialScreenState extends State<TutorialScreen> {
         ),
         const Spacer(),
         Text(
-          '${_activeStep + 1} / ${ex.notes.length}',
+          'Step ${_activeStep + 1}',
           style: TextStyle(
-            color: Colors.white.withOpacity(0.35),
+            color: Colors.white.withValues(alpha: 0.35),
             fontSize: 11,
             fontWeight: FontWeight.w600,
           ),
@@ -380,14 +302,13 @@ class _TutorialScreenState extends State<TutorialScreen> {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               height: 4,
-              margin:
-              EdgeInsets.only(right: e.key < notes.length - 1 ? 5 : 0),
+              margin: EdgeInsets.only(right: e.key < notes.length - 1 ? 5 : 0),
               decoration: BoxDecoration(
                 color: active
                     ? kNeonGreen
                     : e.key < _activeStep
-                    ? kNeonGreen.withOpacity(0.4)
-                    : Colors.white.withOpacity(0.1),
+                    ? kNeonGreen.withValues(alpha: 0.4)
+                    : Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -405,7 +326,7 @@ class _TutorialScreenState extends State<TutorialScreen> {
       decoration: BoxDecoration(
         color: kDarkCard,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: kNeonGreen.withOpacity(0.22)),
+        border: Border.all(color: kNeonGreen.withValues(alpha: 0.22)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -445,24 +366,11 @@ class _TutorialScreenState extends State<TutorialScreen> {
           Text(
             note.text,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.75),
+              color: Colors.white.withValues(alpha: 0.75),
               fontSize: 13,
               height: 1.65,
             ),
           ),
-          if (note.imageUrl.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                note.imageUrl,
-                height: 160,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-              ),
-            ),
-          ],
           const SizedBox(height: 16),
           Row(
             children: [
@@ -473,16 +381,20 @@ class _TutorialScreenState extends State<TutorialScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.06),
+                        color: Colors.white.withValues(alpha: 0.06),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                            color: Colors.white.withOpacity(0.1)),
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
                       ),
                       child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.arrow_back_ios_new,
-                              color: Colors.white70, size: 13),
+                          Icon(
+                            Icons.arrow_back_ios_new,
+                            color: Colors.white70,
+                            size: 13,
+                          ),
                           SizedBox(width: 5),
                           Text(
                             'PREV',
@@ -522,8 +434,11 @@ class _TutorialScreenState extends State<TutorialScreen> {
                             ),
                           ),
                           SizedBox(width: 5),
-                          Icon(Icons.arrow_forward_ios,
-                              color: Colors.black, size: 13),
+                          Icon(
+                            Icons.arrow_forward_ios,
+                            color: Colors.black,
+                            size: 13,
+                          ),
                         ],
                       ),
                     ),
@@ -534,16 +449,20 @@ class _TutorialScreenState extends State<TutorialScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
-                      color: kNeonGreen.withOpacity(0.15),
+                      color: kNeonGreen.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                          color: kNeonGreen.withOpacity(0.35)),
+                        color: kNeonGreen.withValues(alpha: 0.35),
+                      ),
                     ),
                     child: const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.check_circle_outline,
-                            color: kNeonGreen, size: 15),
+                        Icon(
+                          Icons.check_circle_outline,
+                          color: kNeonGreen,
+                          size: 15,
+                        ),
                         SizedBox(width: 6),
                         Text(
                           'DONE',
@@ -571,13 +490,16 @@ class _TutorialScreenState extends State<TutorialScreen> {
       children: [
         Row(
           children: [
-            Icon(Icons.list_alt_rounded,
-                color: Colors.white.withOpacity(0.35), size: 14),
+            Icon(
+              Icons.list_alt_rounded,
+              color: Colors.white.withValues(alpha: 0.35),
+              size: 14,
+            ),
             const SizedBox(width: 6),
             Text(
               'ALL STEPS',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.35),
+                color: Colors.white.withValues(alpha: 0.35),
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 1,
@@ -590,7 +512,7 @@ class _TutorialScreenState extends State<TutorialScreen> {
           decoration: BoxDecoration(
             color: kDarkCard,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.06)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
           ),
           clipBehavior: Clip.hardEdge,
           child: Column(
@@ -606,10 +528,9 @@ class _TutorialScreenState extends State<TutorialScreen> {
                     onTap: () => setState(() => _activeStep = idx),
                     child: Container(
                       color: isActive
-                          ? kNeonGreen.withOpacity(0.07)
+                          ? kNeonGreen.withValues(alpha: 0.07)
                           : Colors.transparent,
-                      padding:
-                      const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                       child: Row(
                         children: [
                           Container(
@@ -617,32 +538,36 @@ class _TutorialScreenState extends State<TutorialScreen> {
                             height: 22,
                             decoration: BoxDecoration(
                               color: isDone
-                                  ? kNeonGreen.withOpacity(0.2)
+                                  ? kNeonGreen.withValues(alpha: 0.2)
                                   : isActive
                                   ? kNeonGreen
-                                  : Colors.white.withOpacity(0.06),
+                                  : Colors.white.withValues(alpha: 0.06),
                               borderRadius: BorderRadius.circular(6),
                               border: Border.all(
                                 color: isDone || isActive
-                                    ? kNeonGreen.withOpacity(0.5)
-                                    : Colors.white.withOpacity(0.1),
+                                    ? kNeonGreen.withValues(alpha: 0.5)
+                                    : Colors.white.withValues(alpha: 0.1),
                               ),
                             ),
                             child: Center(
                               child: isDone
-                                  ? const Icon(Icons.check,
-                                  color: kNeonGreen, size: 12)
+                                  ? const Icon(
+                                      Icons.check,
+                                      color: kNeonGreen,
+                                      size: 12,
+                                    )
                                   : Text(
-                                '${idx + 1}',
-                                style: TextStyle(
-                                  color: isActive
-                                      ? Colors.black
-                                      : Colors.white
-                                      .withOpacity(0.4),
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
+                                      '${idx + 1}',
+                                      style: TextStyle(
+                                        color: isActive
+                                            ? Colors.black
+                                            : Colors.white.withValues(
+                                                alpha: 0.4,
+                                              ),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -654,7 +579,7 @@ class _TutorialScreenState extends State<TutorialScreen> {
                               style: TextStyle(
                                 color: isActive
                                     ? Colors.white
-                                    : Colors.white.withOpacity(0.45),
+                                    : Colors.white.withValues(alpha: 0.45),
                                 fontSize: 12,
                                 fontWeight: isActive
                                     ? FontWeight.w600
@@ -664,15 +589,17 @@ class _TutorialScreenState extends State<TutorialScreen> {
                             ),
                           ),
                           if (isActive)
-                            const Icon(Icons.chevron_right,
-                                color: kNeonGreen, size: 16),
+                            const Icon(
+                              Icons.chevron_right,
+                              color: kNeonGreen,
+                              size: 16,
+                            ),
                         ],
                       ),
                     ),
                   ),
                   if (!isLast)
-                    const Divider(
-                        height: 1, color: Colors.white10, indent: 48),
+                    const Divider(height: 1, color: Colors.white10, indent: 48),
                 ],
               );
             }).toList(),
@@ -689,17 +616,20 @@ class _TutorialScreenState extends State<TutorialScreen> {
       decoration: BoxDecoration(
         color: kDarkCard,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
       ),
       child: Column(
         children: [
-          Icon(Icons.video_library_outlined,
-              color: Colors.white.withOpacity(0.12), size: 42),
+          Icon(
+            Icons.video_library_outlined,
+            color: Colors.white.withValues(alpha: 0.12),
+            size: 42,
+          ),
           const SizedBox(height: 12),
           Text(
             'No steps available yet',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.28),
+              color: Colors.white.withValues(alpha: 0.28),
               fontSize: 13,
               fontWeight: FontWeight.w500,
             ),
@@ -713,9 +643,9 @@ class _TutorialScreenState extends State<TutorialScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: kNeonGreen.withOpacity(0.1),
+        color: kNeonGreen.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: kNeonGreen.withOpacity(0.25)),
+        border: Border.all(color: kNeonGreen.withValues(alpha: 0.25)),
       ),
       child: Text(
         label,
