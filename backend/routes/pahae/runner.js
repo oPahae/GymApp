@@ -269,7 +269,7 @@ router.get("/init", async (req, res) => {
 
     await conn.commit();
 
-    res.send("✅ defaultdb initialized successfully");
+    res.send(" defaultdb initialized successfully");
   } catch (err) {
     await conn.rollback();
     console.error(err);

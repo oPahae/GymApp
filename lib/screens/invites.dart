@@ -19,7 +19,7 @@ class _InvitesPageState extends State<InvitesPage> {
   List<Client>? _invites;
   final Set<int> _processing = {};
 
-  // ✅ Plus de fallback hardcodé
+  //  Plus de fallback hardcodé
   int get _coachID => _session.id;
 
   @override
@@ -28,7 +28,7 @@ class _InvitesPageState extends State<InvitesPage> {
     _ensureSessionThenLoad();
   }
 
-  // ✅ Charge la session si nécessaire avant de fetch les invites
+  //  Charge la session si nécessaire avant de fetch les invites
   Future<void> _ensureSessionThenLoad() async {
     if (!_session.isLoaded || _session.id == 0) {
       await _session.load();

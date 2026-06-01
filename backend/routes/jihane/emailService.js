@@ -103,7 +103,7 @@ const htmlResetForm = (email, postUrl) => `
       <button onclick="submitReset()">RESET →</button>
     </div>
     <div class="success-box" id="success-box">
-      <h2>✅ Password successfully reset!</h2>
+      <h2> Password successfully reset!</h2>
       <p>You can now log in with your new password.</p>
     </div>
   </div>

@@ -24,12 +24,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final email = _emailController.text.trim();
 
   if (email.isEmpty) {
-    _showSnack('Veuillez entrer votre email.', isError: true);
+    _showSnack('Enter your email.', isError: true);
     return;
   }
 
   if (!email.contains('@')) {
-    _showSnack('Veuillez entrer un email valide.', isError: true);
+    _showSnack('Enter a valid email.', isError: true);
     return;
   }
 
@@ -45,8 +45,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       'Email sent ! Check your mail',
       isError: false,
     );
-    await Future.delayed(const Duration(seconds: 2));
-    if (mounted) Navigator.pop(context);
+    // await Future.delayed(const Duration(seconds: 2));
+    // if (mounted) Navigator.pop(context);
   } else {
     _showSnack(
       result['message'] ?? 'Error sending email',
