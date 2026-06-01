@@ -6,7 +6,7 @@ import { sendPasswordResetEmail, htmlError, htmlResetForm } from './emailService
 
 // --- Constants ---
 const JWT_SECRET = 'secret';
-const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
+const BASE_URL = process.env.SERVER;
 const router = express.Router();
 
 // --- Middleware ---
@@ -210,17 +210,17 @@ router.get('/reset-password', async (req, res) => {
     );
     if (users.length === 0)
       return res.send(htmlError('Email introuvable', 'Aucun compte associé à cet email.'));
-
-    res.send(htmlResetForm(email, `${BASE_URL}/api/jihane/auth/reset-password`));
+    console.log('reseting ...')
+    res.send(htmlResetForm(email, `${BASE_URL}/api/jihane/auth/update-password`));
   } catch (err) {
     console.error(err);
     res.status(500).send('Erreur serveur.');
   }
 });
 
-// POST /api/jihane/auth/reset-password
+// POST /api/jihane/auth/update-password
 // Reçoit { email, newPassword } et met à jour le mot de passe
-router.post('/reset-password', async (req, res) => {
+router.post('/update-password', async (req, res) => {
   const { email, newPassword } = req.body;
   if (!email || !newPassword)
     return res.status(400).json({ success: false, message: 'Email et mot de passe requis.' });

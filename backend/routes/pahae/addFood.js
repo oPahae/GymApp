@@ -61,48 +61,80 @@ router.get("/recent/:clientID", async (req, res) => {
 
 router.get("/recipes/:clientID", async (req, res) => {
   const { clientID } = req.params;
+
   if (!clientID || isNaN(clientID)) {
-    return res.status(400).json({ success: false, message: "Invalid clientID" });
+    return res.status(400).json({
+      success: false,
+      message: "Invalid clientID",
+    });
   }
+
   try {
     const [recipes] = await pool.query(
-      "SELECT id, name, image, calories FROM Recipes WHERE clientID = ? ORDER BY name ASC",
+      `SELECT id, name, image, calories
+       FROM Recipes
+       WHERE clientID = ?
+       ORDER BY name ASC`,
       [clientID]
     );
+
     if (recipes.length === 0) {
-      return res.json({ success: true, data: [] });
+      return res.json({
+        success: true,
+        data: [],
+      });
     }
 
-    const mealtimeKeys = recipes.map((r) => `recipe_${r.id}`);
-    const mtPlaceholders = mealtimeKeys.map(() => "?").join(",");
+    const recipeIds = recipes.map(r => r.id);
+    const placeholders = recipeIds.map(() => "?").join(",");
 
     const [ingredientRows] = await pool.query(
-      `SELECT ni.mealtime, i.id, i.name, i.image, i.calories, i.type
-       FROM NutritionIngredients ni
-       JOIN Ingredients i ON i.id = ni.ingredientID
-       WHERE ni.clientID = ? AND ni.mealtime IN (${mtPlaceholders})`,
-      [clientID, ...mealtimeKeys]
+      `SELECT
+          ir.recipeID,
+          ir.quantity,
+          i.id,
+          i.name,
+          i.image,
+          i.calories,
+          i.type
+       FROM IngredientRecipes ir
+       JOIN Ingredients i
+         ON i.id = ir.ingredientID
+       WHERE ir.recipeID IN (${placeholders})`,
+      recipeIds
     );
 
     const ingredientsByRecipe = {};
+
     for (const row of ingredientRows) {
-      const recipeID = parseInt(row.mealtime.replace("recipe_", ""), 10);
-      if (!ingredientsByRecipe[recipeID]) ingredientsByRecipe[recipeID] = [];
-      ingredientsByRecipe[recipeID].push(mapIngredient(row));
+      if (!ingredientsByRecipe[row.recipeID]) {
+        ingredientsByRecipe[row.recipeID] = [];
+      }
+
+      ingredientsByRecipe[row.recipeID].push({
+        ...mapIngredient(row),
+        quantity: row.quantity,
+      });
     }
 
-    const result = recipes.map((r) => ({
-      id: String(r.id),
-      name: r.name ?? "",
-      imageUrl: r.image ?? "",
-      calories: r.calories ?? 0,
-      ingredients: ingredientsByRecipe[r.id] ?? [],
+    const result = recipes.map(recipe => ({
+      id: String(recipe.id),
+      name: recipe.name ?? "",
+      imageUrl: recipe.image ?? "",
+      calories: recipe.calories ?? 0,
+      ingredients: ingredientsByRecipe[recipe.id] ?? [],
     }));
 
-    res.json({ success: true, data: result });
+    res.json({
+      success: true,
+      data: result,
+    });
   } catch (err) {
-    console.error("GET /recipes/:clientID:", err.message);
-    res.status(500).json({ success: false, message: "Failed to fetch recipes" });
+    console.error("GET /recipes/:clientID:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch recipes",
+    });
   }
 });
 

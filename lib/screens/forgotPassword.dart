@@ -42,14 +42,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   if (result['success'] == true) {
     _showSnack(
-      'Email envoyé ! Vérifiez votre boîte mail.',
+      'Email sent ! Check your mail',
       isError: false,
     );
     await Future.delayed(const Duration(seconds: 2));
     if (mounted) Navigator.pop(context);
   } else {
     _showSnack(
-      result['message'] ?? 'Erreur lors de l\'envoi.',
+      result['message'] ?? 'Error sending email',
       isError: true,
     );
   }
@@ -58,7 +58,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   void _showSnack(String msg, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(msg, style: const TextStyle(color: Colors.white)),
+        content: Text(msg, style: const TextStyle(color: Colors.black)),
         backgroundColor: isError ? const Color(0xFFFF4444) : kNeonGreen,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

@@ -28,14 +28,22 @@ router.post("/save", async (req, res) => {
     ingredients = [],
   } = req.body;
 
-  if (!name || typeof name !== "string" || name.trim() === "") {
-    return res.status(400).json({ success: false, message: "Recipe name is required." });
+  if (!name || typeof name !== "string" || !name.trim()) {
+    return res.status(400).json({
+      success: false,
+      message: "Recipe name is required.",
+    });
   }
+
   if (!Array.isArray(ingredients) || ingredients.length === 0) {
-    return res.status(400).json({ success: false, message: "At least one ingredient is required." });
+    return res.status(400).json({
+      success: false,
+      message: "At least one ingredient is required.",
+    });
   }
+
   for (const ing of ingredients) {
-    if (!ing.ingredientID || ing.quantity == null || ing.quantity <= 0) {
+    if (!ing.ingredientID || !ing.quantity || ing.quantity <= 0) {
       return res.status(400).json({
         success: false,
         message: `Invalid ingredient entry: ${JSON.stringify(ing)}`,
@@ -44,29 +52,52 @@ router.post("/save", async (req, res) => {
   }
 
   const connection = await pool.getConnection();
+
   try {
     await connection.beginTransaction();
 
-    await connection.query(
-      "INSERT INTO Recipes (name, image, calories, clientID) VALUES (?, ?, ?, ?)",
-      [name.trim(), image, Math.round(calories ?? 0), clientID]
+    const [recipeResult] = await connection.query(
+      `INSERT INTO Recipes (name, image, calories, clientID)
+       VALUES (?, ?, ?, ?)`,
+      [
+        name.trim(),
+        image,
+        Math.round(calories ?? 0),
+        clientID,
+      ]
     );
+
+    const recipeID = recipeResult.insertId;
 
     for (const ing of ingredients) {
       await connection.query(
-        `INSERT INTO NutritionIngredients (ingredientID, clientID, mealtime, quantity)
-         VALUES (?, ?, 'recipe', ?)
-         ON DUPLICATE KEY UPDATE quantity = VALUES(quantity)`,
-        [ing.ingredientID, clientID, Math.round(ing.quantity)]
+        `INSERT INTO IngredientRecipes
+         (recipeID, ingredientID, clientID, quantity)
+         VALUES (?, ?, ?, ?)`,
+        [
+          recipeID,
+          ing.ingredientID,
+          clientID,
+          Math.round(ing.quantity),
+        ]
       );
     }
 
     await connection.commit();
-    res.status(201).json({ success: true });
+
+    res.status(201).json({
+      success: true,
+      recipeID,
+    });
   } catch (error) {
     await connection.rollback();
-    console.error("POST /save error:", error.message);
-    res.status(500).json({ success: false, message: "Failed to save recipe." });
+
+    console.error("POST /save error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to save recipe.",
+    });
   } finally {
     connection.release();
   }
