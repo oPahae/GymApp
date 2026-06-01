@@ -175,25 +175,47 @@ router.get('/me', authMiddleware, async (req, res) => {
 // Reçoit l'email, envoie un lien contenant l'email (pas de token stocké)
 router.post('/forgot-password', async (req, res) => {
   const { email } = req.body;
+
   if (!email)
     return res.status(400).json({ success: false, message: 'Email requis.' });
 
   try {
-    const [users] = await db.query(
-      'SELECT id, name, email FROM Clients WHERE email = ?', [email]
+    let [users] = await db.query(
+      'SELECT id, name, email FROM Clients WHERE email = ?',
+      [email]
     );
+    let role = 'client';
 
-    // Réponse identique que l'email existe ou non (sécurité)
-    if (users.length === 0)
-      return res.json({ success: true, message: 'Si cet email existe, un lien a été envoyé.' });
+    if (users.length === 0) {
+      [users] = await db.query(
+        'SELECT id, name, email FROM Coaches WHERE email = ?',
+        [email]
+      );
+      role = 'coach';
+    }
+
+    if (users.length === 0) {
+      return res.json({
+        success: true,
+        message: 'Si cet email existe, un lien a été envoyé.'
+      });
+    }
 
     const user = users[0];
-    await sendPasswordResetEmail(user.email, user.name, 'client');
 
-    res.json({ success: true, message: 'Email de réinitialisation envoyé.' });
+    await sendPasswordResetEmail(user.email, user.name, role);
+
+    return res.json({
+      success: true,
+      message: 'Email de réinitialisation envoyé.'
+    });
+
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, message: 'Erreur serveur.' });
+    return res.status(500).json({
+      success: false,
+      message: 'Erreur serveur.'
+    });
   }
 });
 
@@ -210,7 +232,8 @@ router.get('/reset-password', async (req, res) => {
     );
     if (users.length === 0)
       return res.send(htmlError('Email introuvable', 'Aucun compte associé à cet email.'));
-    console.log('reseting ...')
+    
+    console.log('reseting: ' + `${BASE_URL}/api/jihane/auth/update-password`);
     res.send(htmlResetForm(email, `${BASE_URL}/api/jihane/auth/update-password`));
   } catch (err) {
     console.error(err);
@@ -218,10 +241,12 @@ router.get('/reset-password', async (req, res) => {
   }
 });
 
-// POST /api/jihane/auth/update-password
+// POST /api/jihane/auth/reset-password
 // Reçoit { email, newPassword } et met à jour le mot de passe
 router.post('/update-password', async (req, res) => {
   const { email, newPassword } = req.body;
+  console.log('email: ' + email);
+  console.log('new pass: ' + newPassword);
   if (!email || !newPassword)
     return res.status(400).json({ success: false, message: 'Email et mot de passe requis.' });
   if (newPassword.length < 6)

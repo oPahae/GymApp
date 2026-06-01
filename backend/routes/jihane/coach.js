@@ -2,16 +2,13 @@ import express from 'express';
 import db from '../../config/db.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
-import crypto from 'crypto';
-import { sendPasswordResetEmail } from './emailService.js';
+import { sendPasswordResetEmail, htmlError, htmlResetForm } from './emailService.js';
 import { authMiddleware } from './auth.js';
 
 const router = express.Router();
 const JWT_SECRET = 'secret';
+const BASE_URL = process.env.SERVER;
 
-// ─────────────────────────────────────────────
-// POST /api/jihane/coaches/login
-// ─────────────────────────────────────────────
 router.post('/login', async (req, res) => {
   const { identifier, password } = req.body;
   if (!identifier || !password)
@@ -45,9 +42,6 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────
-// POST /api/jihane/coaches/register
-// ─────────────────────────────────────────────
 router.post('/register', async (req, res) => {
   const { name, email, password, image, specialty, bio } = req.body;
   if (!name || !email || !password)
@@ -82,11 +76,6 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────
-// GET /api/jihane/coaches/me/profile
-// Profil du coach connecté + ses clients
-// IMPORTANT : cette route doit être déclarée AVANT /:id
-// ─────────────────────────────────────────────
 router.get('/me/profile', authMiddleware, async (req, res) => {
   if (req.user.role !== 'coach')
     return res.status(403).json({ success: false, message: 'Accès réservé aux coaches.' });
@@ -101,8 +90,6 @@ router.get('/me/profile', authMiddleware, async (req, res) => {
     if (rows.length === 0)
       return res.status(404).json({ success: false, message: 'Coach introuvable.' });
 
-    const coach = rows[0];
-
     const [clients] = await db.query(
       `SELECT id, name, image, birth, gender, weight, height,
               frequency, goal, weightGoal, createdAt, coachID
@@ -110,20 +97,85 @@ router.get('/me/profile', authMiddleware, async (req, res) => {
       [coachId]
     );
 
-    res.json({
-      success: true,
-      coach: { ...coach, clients }
-    });
+    res.json({ success: true, coach: { ...rows[0], clients } });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Erreur serveur.' });
   }
 });
 
-// ─────────────────────────────────────────────
-// GET /api/jihane/coaches
-// Liste tous les coaches
-// ─────────────────────────────────────────────
+router.post('/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  if (!email)
+    return res.status(400).json({ success: false, message: 'Email requis.' });
+
+  try {
+    const [coaches] = await db.query(
+      'SELECT id, name, email FROM Coaches WHERE email = ?', [email]
+    );
+    if (coaches.length === 0)
+      return res.json({ success: true, message: 'Si cet email existe, un lien a été envoyé.' });
+
+    const coach = coaches[0];
+
+    await sendPasswordResetEmail(coach.email, coach.name, 'coach');
+
+    res.json({ success: true, message: 'Email de réinitialisation envoyé.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Erreur serveur.' });
+  }
+});
+
+router.get('/reset-password', async (req, res) => {
+  const { email } = req.query;
+  console.log('Email to work on : ' + email);
+  if (!email)
+    return res.send(htmlError('Email manquant', 'Lien invalide.'));
+
+  try {
+    const [coaches] = await db.query(
+      'SELECT id FROM Coaches WHERE email = ?', [email]
+    );
+    if (coaches.length === 0)
+      return res.send(htmlError('Email introuvable', 'Aucun compte associé à cet email.'));
+
+    console.log('reseting ...');
+    res.send(htmlResetForm(email, `${BASE_URL}/api/jihane/coaches/update-password`));
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erreur serveur.');
+  }
+});
+
+router.post('/update-password', async (req, res) => {
+  const { email, newPassword } = req.body;
+  console.log('Updating...');
+  if (!email || !newPassword)
+    return res.status(400).json({ success: false, message: 'Email et mot de passe requis.' });
+  if (newPassword.length < 6)
+    return res.status(400).json({ success: false, message: 'Au moins 6 caractères.' });
+
+  try {
+    const [coaches] = await db.query(
+      'SELECT id FROM Coaches WHERE email = ?', [email]
+    );
+    if (coaches.length === 0)
+      return res.status(400).json({ success: false, message: 'Email introuvable.' });
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await db.query(
+      'UPDATE Coaches SET password = ? WHERE email = ?',
+      [hashedPassword, email]
+    );
+
+    res.json({ success: true, message: 'Mot de passe réinitialisé avec succès.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Erreur serveur.' });
+  }
+});
+
 router.get('/', async (req, res) => {
   try {
     const [coaches] = await db.query(
@@ -136,10 +188,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────
-// GET /api/jihane/coaches/:id
-// Profil d'un coach par ID + ses clients
-// ─────────────────────────────────────────────
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
     const [rows] = await db.query(
@@ -149,26 +197,20 @@ router.get('/:id', authMiddleware, async (req, res) => {
     if (rows.length === 0)
       return res.status(404).json({ success: false, message: 'Coach introuvable.' });
 
-    const coach = rows[0];
-
     const [clients] = await db.query(
       `SELECT id, name, image, birth, gender, weight, height,
               frequency, goal, weightGoal, createdAt, coachID
        FROM Clients WHERE coachID = ?`,
-      [coach.id]
+      [rows[0].id]
     );
 
-    res.json({ success: true, coach: { ...coach, clients } });
+    res.json({ success: true, coach: { ...rows[0], clients } });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Erreur serveur.' });
   }
 });
 
-// ─────────────────────────────────────────────
-// PUT /api/jihane/coaches/:id
-// Mise à jour du profil coach (lui-même uniquement)
-// ─────────────────────────────────────────────
 router.put('/:id', authMiddleware, async (req, res) => {
   const targetId = parseInt(req.params.id);
 
@@ -193,7 +235,6 @@ router.put('/:id', authMiddleware, async (req, res) => {
       [targetId]
     );
 
-    // Récupérer les clients aussi pour garder la cohérence avec profileCoach
     const [clients] = await db.query(
       `SELECT id, name, image, birth, gender, weight, height,
               frequency, goal, weightGoal, createdAt, coachID
@@ -207,107 +248,5 @@ router.put('/:id', authMiddleware, async (req, res) => {
     res.status(500).json({ success: false, message: 'Erreur serveur.' });
   }
 });
-
-// ─────────────────────────────────────────────
-// POST /api/jihane/coaches/forgot-password
-// ─────────────────────────────────────────────
-router.post('/forgot-password', async (req, res) => {
-  const { email } = req.body;
-  if (!email)
-    return res.status(400).json({ success: false, message: 'Email requis.' });
-
-  try {
-    const [coaches] = await db.query(
-      'SELECT id, name, email FROM Coaches WHERE email = ?', [email]
-    );
-    if (coaches.length === 0)
-      return res.json({ success: true, message: 'Si cet email existe, un lien a été envoyé.' });
-
-    const coach = coaches[0];
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetTokenExpiry = new Date(Date.now() + 3600000);
-
-    await db.query(
-      'UPDATE Coaches SET resetToken = ?, resetTokenExpiry = ? WHERE id = ?',
-      [resetToken, resetTokenExpiry, coach.id]
-    );
-    await sendPasswordResetEmail(coach.email, resetToken, coach.name, 'coach');
-
-    res.json({ success: true, message: 'Email de réinitialisation envoyé.' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Erreur serveur.' });
-  }
-});
-
-// ─────────────────────────────────────────────
-// GET /api/jihane/coaches/reset-password?token=xxx
-// ─────────────────────────────────────────────
-router.get('/reset-password', async (req, res) => {
-  const { token } = req.query;
-  if (!token) return res.send(htmlError('Token manquant', 'Lien invalide.'));
-
-  try {
-    const [coaches] = await db.query(
-      'SELECT id FROM Coaches WHERE resetToken = ? AND resetTokenExpiry > NOW()', [token]
-    );
-    if (coaches.length === 0)
-      return res.send(htmlError('Lien expiré ou invalide', 'Demandez un nouveau lien.'));
-
-    res.send(htmlResetForm(token, '/api/jihane/coaches/reset-password'));
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('Erreur serveur.');
-  }
-});
-
-// ─────────────────────────────────────────────
-// POST /api/jihane/coaches/reset-password
-// ─────────────────────────────────────────────
-router.post('/reset-password', async (req, res) => {
-  const { token, newPassword } = req.body;
-  if (!token || !newPassword)
-    return res.status(400).json({ success: false, message: 'Token et mot de passe requis.' });
-  if (newPassword.length < 6)
-    return res.status(400).json({ success: false, message: 'Au moins 6 caractères.' });
-
-  try {
-    const [coaches] = await db.query(
-      'SELECT id FROM Coaches WHERE resetToken = ? AND resetTokenExpiry > NOW()', [token]
-    );
-    if (coaches.length === 0)
-      return res.status(400).json({ success: false, message: 'Token invalide ou expiré.' });
-
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await db.query(
-      'UPDATE Coaches SET password = ?, resetToken = NULL, resetTokenExpiry = NULL WHERE id = ?',
-      [hashedPassword, coaches[0].id]
-    );
-    res.json({ success: true, message: 'Mot de passe réinitialisé avec succès.' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Erreur serveur.' });
-  }
-});
-
-// --- HTML Helpers (Placeholders) ---
-function htmlError(title, message) {
-  return `<html><body><h1>${title}</h1><p>${message}</p></body></html>`;
-}
-
-function htmlResetForm(token, action) {
-  return `
-    <html>
-      <body>
-        <h1>Réinitialiser le mot de passe</h1>
-        <form method="POST" action="${action}">
-          <input type="hidden" name="token" value="${token}" />
-          <label>Nouveau mot de passe: <input type="password" name="newPassword" required /></label>
-          <button type="submit">Réinitialiser</button>
-        </form>
-      </body>
-    </html>
-  `;
-}
 
 export default router;

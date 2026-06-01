@@ -19,7 +19,7 @@ class FoodModel {
     return FoodModel(
       id: (json['_id'] ?? json['id'] ?? '').toString(),
       name: json['name'] ?? '',
-      imageUrl: json['image'] ?? json['imageUrl'] ?? '', // ✅ FIX
+      imageUrl: json['image'] ?? json['imageUrl'] ?? '', //  FIX
       calories: (json['calories'] ?? 0).toDouble(),
       type: _parseType(json['type']),
     );
