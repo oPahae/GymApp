@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:test_hh/constants/colors.dart';
 import 'package:test_hh/constants/names.dart';
-import 'package:test_hh/screens/clients.dart';
+import 'package:test_hh/screens/main_layout.dart';
 import 'package:test_hh/screens/register.dart';
-import 'package:test_hh/screens/home.dart';
 import 'package:test_hh/screens/forgotPassword.dart';
 import 'package:test_hh/services/apiService.dart';
+import 'package:test_hh/session/user_session.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -28,39 +28,40 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
-  final identifier = _identifierController.text.trim();
-  final password = _passwordController.text;
+    final identifier = _identifierController.text.trim();
+    final password = _passwordController.text;
 
-  if (identifier.isEmpty || password.isEmpty) {
-    _showSnack('Veuillez remplir tous les champs.', isError: true);
-    return;
-  }
+    if (identifier.isEmpty || password.isEmpty) {
+      _showSnack('Veuillez remplir tous les champs.', isError: true);
+      return;
+    }
 
-  setState(() => _isLoading = true);
+    setState(() => _isLoading = true);
 
-  final result = await ApiService.login(
-    identifier: identifier,
-    password: password,
-  );
-
-  if (!mounted) return;
-  setState(() => _isLoading = false);
-
-  if (result['success'] == true) {
-    final role = result['role'];
-
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => role == "client" ? HomeScreen() : ClientsScreen(),
-      ),
+    final result = await ApiService.login(
+      identifier: identifier,
+      password: password,
     );
-  } else {
-    _showSnack(result['message'] ?? 'Identifiants incorrects.', isError: true);
+
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (result['success'] == true) {
+      await UserSession.instance.load();
+
+      if (!mounted) return;
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const MainLayout(),
+        ),
+        (route) => false,
+      );
+    } else {
+      _showSnack(result['message'] ?? 'Identifiants incorrects.', isError: true);
+    }
   }
-}
-
-
 
   void _showSnack(String msg, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(

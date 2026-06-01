@@ -119,6 +119,20 @@ CREATE TABLE Recipes (
 );
 
 -- ======================
+-- TABLE: IngredientRecipes
+-- ======================
+CREATE TABLE IngredientRecipes (
+    recipeID INT,
+    ingredientID INT,
+    clientID INT,
+    quantity INT,
+    PRIMARY KEY (recipeID, ingredientID),
+    FOREIGN KEY (recipeID) REFERENCES Recipes(id),
+    FOREIGN KEY (ingredientID) REFERENCES Ingredients(id),
+    FOREIGN KEY (clientID) REFERENCES Clients(id)
+);
+
+-- ======================
 -- TABLE: NutritionIngredients
 -- ======================
 CREATE TABLE NutritionIngredients (

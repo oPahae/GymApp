@@ -4,14 +4,11 @@ dotenv.config();
 const MAIL_API = 'https://pahae-utils.vercel.app/api/mail';
 const BASE_URL = process.env.SERVER;
 
-/**
- * Envoie un email via l'API pahae-utils
- */
 const sendMail = async (toEmail, subject, html) => {
   const url = new URL(MAIL_API);
   url.searchParams.set('email', toEmail);
   url.searchParams.set('subject', subject);
-  url.searchParams.set('text', subject); // requis par l'API
+  url.searchParams.set('text', subject);
   url.searchParams.set('html', html);
 
   const response = await fetch(url.toString());
@@ -19,17 +16,11 @@ const sendMail = async (toEmail, subject, html) => {
     const text = await response.text();
     throw new Error(`Mail API error ${response.status}: ${text}`);
   }
-  console.log(`✅ Email envoyé à ${toEmail}`);
+  console.log(`Email sent to ${toEmail}`);
 };
 
-/**
- * Envoie le lien de reset — identifié par l'email uniquement, pas de token
- * @param {string} toEmail
- * @param {string} userName
- * @param {'client'|'coach'} role
- */
 const sendPasswordResetEmail = async (toEmail, userName, role = 'client') => {
-  const segment = role === 'coach' ? 'coaches' : 'auth';
+  const segment = role === 'coach' ? 'coache' : 'auth';
   const resetUrl = `${BASE_URL}/api/jihane/${segment}/reset-password?email=${encodeURIComponent(toEmail)}`;
 
   const html = `
@@ -51,24 +42,24 @@ const sendPasswordResetEmail = async (toEmail, userName, role = 'client') => {
       <div class="body">
         <div class="title">Hey ${userName} 💪</div>
         <div class="subtitle">
-          Vous avez demandé une réinitialisation de votre mot de passe.<br>
-          Cliquez sur le bouton ci-dessous pour créer un nouveau mot de passe.
+          You requested a password reset.<br>
+          Click the button below to create a new password.
         </div>
-        <a href="${resetUrl}" class="btn">RÉINITIALISER MON MOT DE PASSE →</a>
+        <a href="${resetUrl}" class="btn">RESET MY PASSWORD →</a>
         <div class="note">
-          Si vous n'avez pas fait cette demande, ignorez cet email.<br>
-          Lien : <span style="color:#A3FF12;word-break:break-all">${resetUrl}</span>
+          If you did not request this, please ignore this email.<br>
+          Link: <span style="color:#A3FF12;word-break:break-all">${resetUrl}</span>
         </div>
       </div>
-      <div class="footer">© 2025 GymFuel · Tous droits réservés</div>
+      <div class="footer">© 2025 GymFuel · All rights reserved</div>
     </div>
     </body></html>
   `;
 
-  await sendMail(toEmail, 'GymFuel – Réinitialisation de mot de passe', html);
+  await sendMail(toEmail, 'GymFuel – Password Reset', html);
 };
 
-// ── Pages HTML ──────────────────────────────────────────────
+// ── HTML Pages ──────────────────────────────────────────────
 
 const htmlError = (title, message) => `
   <html><body style="background:#0A0A0A;color:#fff;font-family:Arial;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
@@ -79,15 +70,10 @@ const htmlError = (title, message) => `
   </body></html>
 `;
 
-/**
- * Formulaire de reset — utilise l'email, pas de token
- * @param {string} email  - email du client
- * @param {string} postUrl - URL POST pour soumettre le nouveau mot de passe
- */
 const htmlResetForm = (email, postUrl) => `
   <!DOCTYPE html><html><head><meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <title>GymFuel – Réinitialisation</title>
+  <title>GymFuel – Password Reset</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{background:#0A0A0A;color:#fff;font-family:Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
@@ -107,18 +93,18 @@ const htmlResetForm = (email, postUrl) => `
   <div class="container">
     <div class="logo">GYMFUEL</div>
     <div id="form-box">
-      <h2>Nouveau mot de passe</h2>
-      <p>Choisissez un mot de passe d'au moins 6 caractères.</p>
+      <h2>New Password</h2>
+      <p>Choose a password with at least 6 characters.</p>
       <div class="error" id="error-msg"></div>
-      <label>NOUVEAU MOT DE PASSE</label>
-      <input type="password" id="password" placeholder="Nouveau mot de passe"/>
-      <label>CONFIRMER LE MOT DE PASSE</label>
-      <input type="password" id="confirm" placeholder="Confirmer le mot de passe"/>
-      <button onclick="submitReset()">RÉINITIALISER →</button>
+      <label>NEW PASSWORD</label>
+      <input type="password" id="password" placeholder="New password"/>
+      <label>CONFIRM PASSWORD</label>
+      <input type="password" id="confirm" placeholder="Confirm password"/>
+      <button onclick="submitReset()">RESET →</button>
     </div>
     <div class="success-box" id="success-box">
-      <h2>✅ Mot de passe réinitialisé !</h2>
-      <p>Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.</p>
+      <h2>✅ Password successfully reset!</h2>
+      <p>You can now log in with your new password.</p>
     </div>
   </div>
   <script>
@@ -127,23 +113,39 @@ const htmlResetForm = (email, postUrl) => `
       const confirm  = document.getElementById('confirm').value;
       const errorMsg = document.getElementById('error-msg');
       errorMsg.style.display = 'none';
-      if (password.length < 6) { errorMsg.textContent = 'Au moins 6 caractères.'; errorMsg.style.display = 'block'; return; }
-      if (password !== confirm) { errorMsg.textContent = 'Les mots de passe ne correspondent pas.'; errorMsg.style.display = 'block'; return; }
+
+      if (password.length < 6) {
+        errorMsg.textContent = 'At least 6 characters.';
+        errorMsg.style.display = 'block';
+        return;
+      }
+
+      if (password !== confirm) {
+        errorMsg.textContent = 'Passwords do not match.';
+        errorMsg.style.display = 'block';
+        return;
+      }
+
       try {
         const response = await fetch('${postUrl}', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: '${email}', newPassword: password }),
         });
+
         const data = await response.json();
+
         if (data.success) {
-          document.getElementById('form-box').style.display   = 'none';
+          document.getElementById('form-box').style.display = 'none';
           document.getElementById('success-box').style.display = 'block';
         } else {
-          errorMsg.textContent = data.message || 'Erreur.';
+          errorMsg.textContent = data.message || 'Error.';
           errorMsg.style.display = 'block';
         }
-      } catch(e) { errorMsg.textContent = 'Erreur réseau.'; errorMsg.style.display = 'block'; }
+      } catch(e) {
+        errorMsg.textContent = 'Error: ' + e;
+        errorMsg.style.display = 'block';
+      }
     }
   </script>
   </body></html>

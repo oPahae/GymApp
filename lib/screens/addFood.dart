@@ -556,50 +556,62 @@ class _AddFoodScreenState extends State<AddFoodScreen> with SingleTickerProvider
   }
 
   Widget _buildRecipeList() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 100),
-      children: [
-        GestureDetector(
-          onTap: () async {
-            final created = await Navigator.push<bool>(
-              context,
-              MaterialPageRoute(builder: (_) => const AddRecipeScreen()),
-            );
-            if (created == true) _fetchRecipes();
-          },
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 14),
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: kNeonGreen, width: 1.5),
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.add_circle_outline, color: kNeonGreen, size: 18),
-                SizedBox(width: 8),
-                Text('CREATE NEW RECIPE',
+    return RefreshIndicator(
+      color: kNeonGreen,
+      onRefresh: _fetchRecipes,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 100),
+        children: [
+          GestureDetector(
+            onTap: () async {
+              final created = await Navigator.push<bool>(
+                context,
+                MaterialPageRoute(builder: (_) => const AddRecipeScreen()),
+              );
+              if (created == true) _fetchRecipes();
+            },
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 14),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: kNeonGreen, width: 1.5),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.add_circle_outline, color: kNeonGreen, size: 18),
+                  SizedBox(width: 8),
+                  Text(
+                    'CREATE NEW RECIPE',
                     style: TextStyle(
-                        color: kNeonGreen,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1)),
-              ],
+                      color: kNeonGreen,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-        if (_loadingRecipes)
-          _buildLoader()
-        else if (_recipesError != null)
-          _buildError(_recipesError!, _fetchRecipes)
-        else if (_filteredRecipes.isEmpty)
-          _buildEmpty(message: 'Aucune recette')
-        else
-          ..._filteredRecipes.map((r) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _buildRecipeCard(r))),
-      ],
+
+          if (_loadingRecipes)
+            _buildLoader()
+          else if (_recipesError != null)
+            _buildError(_recipesError!, _fetchRecipes)
+          else if (_filteredRecipes.isEmpty)
+            _buildEmpty(message: 'Aucune recette')
+          else
+            ..._filteredRecipes.map(
+              (r) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildRecipeCard(r),
+              ),
+            ),
+        ],
+      ),
     );
   }
 

@@ -3,13 +3,13 @@ import 'package:test_hh/components/navbar.dart';
 import 'package:test_hh/components/navbarCoach.dart';
 import 'package:test_hh/session/user_session.dart';
 
-// Client screens
+// Client
 import 'package:test_hh/screens/home.dart';
 import 'package:test_hh/screens/foods.dart';
 import 'package:test_hh/screens/bodyParts.dart';
 import 'package:test_hh/screens/stats.dart';
 
-// Coach screens
+// Coach
 import 'package:test_hh/screens/clients.dart';
 import 'package:test_hh/screens/invites.dart';
 
