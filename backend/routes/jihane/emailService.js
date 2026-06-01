@@ -20,7 +20,7 @@ const sendMail = async (toEmail, subject, html) => {
 };
 
 const sendPasswordResetEmail = async (toEmail, userName, role = 'client') => {
-  const segment = role === 'coach' ? 'coache' : 'auth';
+  const segment = role === 'coach' ? 'coaches' : 'auth';
   const resetUrl = `${BASE_URL}/api/jihane/${segment}/reset-password?email=${encodeURIComponent(toEmail)}`;
 
   const html = `
