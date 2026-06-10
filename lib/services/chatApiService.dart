@@ -29,7 +29,6 @@ class ChatApiService {
     }
   }
 
-  // Récupère les conversations du coach
   static Future<List<Map<String, dynamic>>> getConversations() async {
     final response = await http.get(
       Uri.parse('$_baseUrl/conversations'),
@@ -42,7 +41,6 @@ class ChatApiService {
     return List<Map<String, dynamic>>.from(data['conversations']);
   }
 
-  // Récupère les messages entre un coach et un client
   static Future<List<Map<String, dynamic>>> getMessages({
     required int coachId,
     required int clientId,
@@ -61,7 +59,6 @@ class ChatApiService {
     return List<Map<String, dynamic>>.from(data['messages']);
   }
 
-  // Envoyer un message texte
   static Future<Map<String, dynamic>> sendMessage({
     required int coachId,
     required int clientId,
@@ -82,7 +79,6 @@ class ChatApiService {
     return Map<String, dynamic>.from(data['message']);
   }
 
-  // Mettre à jour le statut d'un message
   static Future<void> updateMessageStatus({
     required int messageId,
     required String status,
@@ -95,7 +91,6 @@ class ChatApiService {
     _checkStatus(response);
   }
 
-  // Supprimer un message
   static Future<void> deleteMessage(int messageId) async {
     final response = await http.delete(
       Uri.parse('$_baseUrl/messages/$messageId'),
@@ -104,7 +99,6 @@ class ChatApiService {
     _checkStatus(response);
   }
 
-  // Mettre à jour le statut d'un appel
   static Future<Map<String, dynamic>> updateCallStatus({
     required int callId,
     required String status,
@@ -119,7 +113,6 @@ class ChatApiService {
     return Map<String, dynamic>.from(data['call']);
   }
 
-  // Historique des appels
   static Future<List<Map<String, dynamic>>> getCallHistory({
     required int coachId,
     required int clientId,
@@ -133,7 +126,6 @@ class ChatApiService {
     return List<Map<String, dynamic>>.from(data['calls']);
   }
 
-  // Vérifier s'il y a un appel actif
   static Future<Map<String, dynamic>?> getActiveCall({
     required int coachId,
     required int clientId,

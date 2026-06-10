@@ -207,7 +207,7 @@ router.post('/forgot-password', async (req, res) => {
 
     return res.json({
       success: true,
-      message: 'Email de réinitialisation envoyé.'
+      message: 'Mail Sent.'
     });
 
   } catch (err) {
