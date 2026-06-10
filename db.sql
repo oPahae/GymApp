@@ -59,7 +59,7 @@ CREATE TABLE Exercises (
     video VARCHAR(255),
     description VARCHAR(255),
     bodyPartID INT,
-    FOREIGN KEY (bodyPartID) REFERENCES BodyParts(id)
+    FOREIGN KEY (bodyPartID) REFERENCES BodyParts(id) ON DELETE CASCADE
 );
 
 -- ======================
@@ -69,7 +69,7 @@ CREATE TABLE Notes (
     id INT PRIMARY KEY AUTO_INCREMENT,
     text VARCHAR(255),
     exerciseID INT,
-    FOREIGN KEY (exerciseID) REFERENCES Exercises(id)
+    FOREIGN KEY (exerciseID) REFERENCES Exercises(id) ON DELETE CASCADE
 );
 
 -- ======================
@@ -80,8 +80,8 @@ CREATE TABLE Workouts (
     weekDay VARCHAR(50),
     exerciseID INT,
     clientID INT,
-    FOREIGN KEY (exerciseID) REFERENCES Exercises(id),
-    FOREIGN KEY (clientID) REFERENCES Clients(id)
+    FOREIGN KEY (exerciseID) REFERENCES Exercises(id) ON DELETE CASCADE,
+    FOREIGN KEY (clientID) REFERENCES Clients(id) ON DELETE CASCADE
 );
 
 -- ======================
@@ -91,8 +91,8 @@ CREATE TABLE Invites (
     coachID INT,
     clientID INT,
     PRIMARY KEY (coachID, clientID),
-    FOREIGN KEY (coachID) REFERENCES Coaches(id),
-    FOREIGN KEY (clientID) REFERENCES Clients(id)
+    FOREIGN KEY (coachID) REFERENCES Coaches(id) ON DELETE CASCADE,
+    FOREIGN KEY (clientID) REFERENCES Clients(id) ON DELETE CASCADE
 );
 
 -- ======================
@@ -115,7 +115,7 @@ CREATE TABLE Recipes (
     image VARCHAR(255),
     calories INT,
     clientID INT,
-    FOREIGN KEY (clientID) REFERENCES Clients(id)
+    FOREIGN KEY (clientID) REFERENCES Clients(id) ON DELETE CASCADE
 );
 
 -- ======================
@@ -127,9 +127,9 @@ CREATE TABLE IngredientRecipes (
     clientID INT,
     quantity INT,
     PRIMARY KEY (recipeID, ingredientID),
-    FOREIGN KEY (recipeID) REFERENCES Recipes(id),
-    FOREIGN KEY (ingredientID) REFERENCES Ingredients(id),
-    FOREIGN KEY (clientID) REFERENCES Clients(id)
+    FOREIGN KEY (recipeID) REFERENCES Recipes(id) ON DELETE CASCADE,
+    FOREIGN KEY (ingredientID) REFERENCES Ingredients(id) ON DELETE CASCADE,
+    FOREIGN KEY (clientID) REFERENCES Clients(id) ON DELETE CASCADE
 );
 
 -- ======================
@@ -142,8 +142,8 @@ CREATE TABLE NutritionIngredients (
     weekDay VARCHAR(50),
     quantity INT,
     PRIMARY KEY (ingredientID, clientID, mealtime),
-    FOREIGN KEY (ingredientID) REFERENCES Ingredients(id),
-    FOREIGN KEY (clientID) REFERENCES Clients(id)
+    FOREIGN KEY (ingredientID) REFERENCES Ingredients(id) ON DELETE CASCADE,
+    FOREIGN KEY (clientID) REFERENCES Clients(id) ON DELETE CASCADE
 );
 
 -- ======================
@@ -156,8 +156,8 @@ CREATE TABLE NutritionRecipes (
     weekDay VARCHAR(50),
     quantity INT,
     PRIMARY KEY (recipeID, clientID, mealtime),
-    FOREIGN KEY (recipeID) REFERENCES Recipes(id),
-    FOREIGN KEY (clientID) REFERENCES Clients(id)
+    FOREIGN KEY (recipeID) REFERENCES Recipes(id) ON DELETE CASCADE,
+    FOREIGN KEY (clientID) REFERENCES Clients(id) ON DELETE CASCADE
 );
 
 -- ======================
@@ -168,7 +168,7 @@ CREATE TABLE Days (
     logDate DATE,
     calories INT,
     clientID INT,
-    FOREIGN KEY (clientID) REFERENCES Clients(id)
+    FOREIGN KEY (clientID) REFERENCES Clients(id) ON DELETE CASCADE
 );
 
 -- ======================
@@ -179,7 +179,7 @@ CREATE TABLE Activities (
     name VARCHAR(255),
     calories INT,
     dayID INT,
-    FOREIGN KEY (dayID) REFERENCES Days(id)
+    FOREIGN KEY (dayID) REFERENCES Days(id) ON DELETE CASCADE
 );
 
 -- ======================
@@ -191,8 +191,8 @@ CREATE TABLE IngredientsDay (
     mealtime VARCHAR(50),
     quantity INT,
     PRIMARY KEY (ingredientID, dayID, mealtime),
-    FOREIGN KEY (ingredientID) REFERENCES Ingredients(id),
-    FOREIGN KEY (dayID) REFERENCES Days(id)
+    FOREIGN KEY (ingredientID) REFERENCES Ingredients(id) ON DELETE CASCADE,
+    FOREIGN KEY (dayID) REFERENCES Days(id) ON DELETE CASCADE
 );
 
 -- ======================
@@ -204,8 +204,8 @@ CREATE TABLE RecipesDay (
     mealtime VARCHAR(50),
     quantity INT,
     PRIMARY KEY (recipeID, dayID, mealtime),
-    FOREIGN KEY (recipeID) REFERENCES Recipes(id),
-    FOREIGN KEY (dayID) REFERENCES Days(id)
+    FOREIGN KEY (recipeID) REFERENCES Recipes(id) ON DELETE CASCADE,
+    FOREIGN KEY (dayID) REFERENCES Days(id) ON DELETE CASCADE
 );
 
 -- ======================
@@ -222,6 +222,7 @@ CREATE TABLE `Messages` (
   `coachID` int(11) NOT NULL,
   `clientID` int(11) NOT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1;
+
 -- Programme coach
 CREATE TABLE CoachPrograms (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -229,14 +230,14 @@ CREATE TABLE CoachPrograms (
     updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     clientID INT NOT NULL UNIQUE,
     coachID INT NOT NULL,
-    FOREIGN KEY (clientID) REFERENCES Clients(id),
-    FOREIGN KEY (coachID) REFERENCES Coaches(id)
+    FOREIGN KEY (clientID) REFERENCES Clients(id) ON DELETE CASCADE,
+    FOREIGN KEY (coachID) REFERENCES Coaches(id) ON DELETE CASCADE
 );
 CREATE TABLE WeightHistory (
     id        INT PRIMARY KEY AUTO_INCREMENT,
     weight    DOUBLE NOT NULL,
     logDate   DATE NOT NULL,
     clientID  INT NOT NULL,
-    FOREIGN KEY (clientID) REFERENCES Clients(id),
+    FOREIGN KEY (clientID) REFERENCES Clients(id) ON DELETE CASCADE,
     UNIQUE KEY unique_day (clientID, logDate)
 );

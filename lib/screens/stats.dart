@@ -41,7 +41,7 @@ class _StatScreenState extends State<StatScreen>
       duration: const Duration(milliseconds: 1200),
     );
     _barAnim = CurvedAnimation(parent: _barCtrl, curve: Curves.easeOutCubic);
-    _fetchWeightHistory();
+    _fetchWeightHistory();  
   }
 
   @override
